@@ -1,0 +1,2 @@
+import Link from 'next/link';
+export default function Home(){return <section className="hero"><div className="card"><p className="pill">SAKURA ANANDA RESORT</p><h1>Your private resort stay, managed from reservation to checkout.</h1><p>Book a room online, submit your GCash payment proof, and let the front desk manage confirmation, check-in, occupancy, and checkout from one secure dashboard.</p><div className="actions"><Link className="btn" href="/reservation">Reserve a Room</Link><Link className="btn secondary" href="/checkin">Guest Check-in</Link></div></div></section>}

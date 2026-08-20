@@ -1,0 +1,4 @@
+import './globals.css';
+import Link from 'next/link';
+export const metadata={title:'Sakura Ananda Resort | Private Resort Stay',description:'Elegant reservations and front desk management for Sakura Ananda Resort.'};
+export default function Layout({children}:{children:React.ReactNode}){return <html lang="en"><body><header className="site-header"><div className="nav shell"><Link href="/" className="brand"><span className="brand-mark">桜</span><span><strong>Sakura Ananda</strong><small>PRIVATE RESORT</small></span></Link><nav><Link href="/reservation">Reserve</Link><Link href="/checkin">Check-in</Link><Link href="/admin">Staff</Link></nav></div></header><main>{children}</main><footer className="site-footer"><div className="shell footer-inner"><div><b>桜 Sakura Ananda Resort</b><span>Private stays • Quiet moments • Thoughtful service</span></div><span>Asia/Manila • Philippines</span></div></footer></body></html>}

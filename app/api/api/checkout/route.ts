@@ -1,2 +1,0 @@
-import {NextResponse} from 'next/server';import {createClient} from '@supabase/supabase-js';const s=()=>createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-export async function POST(req:Request){const {id}=await req.json();const {data,error}=await s().from('reservations').update({status:'Checked-out',checked_out_at:new Date().toISOString()}).eq('id',id).eq('status','Checked-in').select('booking_id').single();if(error)return NextResponse.json({error:error.message},{status:500});return NextResponse.json(data)}

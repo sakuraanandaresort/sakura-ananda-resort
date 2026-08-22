@@ -42,16 +42,6 @@ export default function Reservation() {
     const s = supabaseBrowser();
 
     async function loadData() {
-      /*
-       * LOAD ACTIVE ROOMS
-       *
-       * Visible room name comes from r.name.
-       * Example:
-       * Room 1
-       *
-       * The UUID remains internally stored
-       * in room_id.
-       */
       const {
         data: roomData,
         error: roomError,
@@ -97,22 +87,19 @@ export default function Reservation() {
         return;
       }
 
-      const qrRow =
-        settingsData?.find(
-          (x) => x.key === 'gcash_qr_url'
-        );
+      const qrRow = settingsData?.find(
+        (x) => x.key === 'gcash_qr_url'
+      );
 
-      const depositRow =
-        settingsData?.find(
-          (x) => x.key === 'deposit_percent'
-        );
+      const depositRow = settingsData?.find(
+        (x) => x.key === 'deposit_percent'
+      );
 
       setQr(qrRow?.value || null);
 
-      const configuredDeposit =
-        Number(
-          depositRow?.value ?? 0.3
-        );
+      const configuredDeposit = Number(
+        depositRow?.value ?? 0.3
+      );
 
       setDepositPct(
         Number.isFinite(configuredDeposit)
@@ -173,10 +160,9 @@ export default function Reservation() {
   const total =
     Number(room?.rate || 0) * nights;
 
-  const suggested =
-    Math.round(
-      total * depositPct
-    );
+  const suggested = Math.round(
+    total * depositPct
+  );
 
   /*
    * ==========================================
@@ -192,6 +178,36 @@ export default function Reservation() {
       [key]: value,
     }));
   }
+
+  /*
+   * ==========================================
+   * CAPITALIZE TEXT
+   * ==========================================
+   *
+   * Guest names, payment references,
+   * special requests and other text fields
+   * are automatically converted to uppercase.
+   *
+   * Email and mobile are NOT capitalized.
+   */
+  function updateText(
+    key: string,
+    value: string
+  ) {
+    update(
+      key,
+      value.toUpperCase()
+    );
+  }
+
+  /*
+   * ==========================================
+   * TODAY
+   * ==========================================
+   */
+  const today = new Date()
+    .toISOString()
+    .slice(0, 10);
 
   /*
    * ==========================================
@@ -214,7 +230,6 @@ export default function Reservation() {
       setMsg(
         'Please select a room.'
       );
-
       setBusy(false);
       return;
     }
@@ -223,7 +238,6 @@ export default function Reservation() {
       setMsg(
         'Please select your check-in and check-out dates.'
       );
-
       setBusy(false);
       return;
     }
@@ -232,28 +246,24 @@ export default function Reservation() {
       setMsg(
         'Check-out must be after check-in.'
       );
-
       setBusy(false);
       return;
     }
 
     if (
       room &&
-      Number(f.guests) > room.max_guests
+      Number(f.guests) >
+        room.max_guests
     ) {
       setMsg(
         `${room.name} can accommodate a maximum of ${room.max_guests} guests.`
       );
-
       setBusy(false);
       return;
     }
 
     /*
      * DEPOSIT
-     *
-     * If the guest leaves the field empty,
-     * use the suggested deposit amount.
      */
     const depositAmount =
       f.deposit === ''
@@ -264,7 +274,7 @@ export default function Reservation() {
           );
 
     /*
-     * RESERVATION PAYLOAD
+     * PAYLOAD
      */
     const payload = {
       ...f,
@@ -367,82 +377,79 @@ export default function Reservation() {
    */
   if (booking) {
     return (
-      <div className="booking-panel">
+      <div className="booking-page">
+        <div className="booking-glow" />
 
-        <div className="eyebrow">
-          Sakura Ananda • Reservation
-        </div>
+        <div className="booking-panel">
 
-        <h1>
-          Reservation received.
-        </h1>
+          <div className="brand-mark">
+            <span>SAKURA ANANDA</span>
+            <small>PRIVATE RESORT</small>
+          </div>
 
-        <p className="muted">
-          Thank you for choosing
-          Sakura Ananda Resort.
-        </p>
+          <div className="eyebrow">
+            RESERVATION
+          </div>
 
-        <div
-          className="card"
-          style={{
-            marginTop: 26,
-          }}
-        >
+          <h1>
+            Reservation received.
+          </h1>
 
-          <span className="pill success">
-            Reservation received
-          </span>
-
-          <h2
-            style={{
-              fontSize: 42,
-              margin:
-                '12px 0 4px',
-            }}
-          >
-            {booking}
-          </h2>
-
-          <p>
-            {msg}
+          <p className="muted">
+            Thank you for choosing
+            Sakura Ananda Resort.
           </p>
 
-          <div className="notice success">
+          <div className="card success-card">
 
-            <b>
-              Payment verification
-            </b>
+            <span className="pill success">
+              ✓ Reservation received
+            </span>
 
-            <p>
-              If you entered a deposit,
-              staff will verify the payment
-              before marking it as
-              <strong> PAID</strong>.
-            </p>
+            <div className="booking-label">
+              BOOKING ID
+            </div>
 
-          </div>
-
-          <div
-            className="notice"
-            style={{
-              marginTop: 12,
-            }}
-          >
-
-            <b>
-              Keep your booking ID.
-            </b>
+            <h2>
+              {booking}
+            </h2>
 
             <p>
-              Staff will use your booking ID
-              when confirming your reservation
-              and payment.
+              {msg}
             </p>
+
+            <div className="notice success">
+
+              <b>
+                Payment verification
+              </b>
+
+              <p>
+                If you entered a deposit,
+                staff will verify the payment
+                before marking it as
+                <strong> PAID</strong>.
+              </p>
+
+            </div>
+
+            <div className="notice">
+
+              <b>
+                Keep your booking ID
+              </b>
+
+              <p>
+                Staff will use your booking
+                ID when confirming your
+                reservation and payment.
+              </p>
+
+            </div>
 
           </div>
 
         </div>
-
       </div>
     );
   }
@@ -453,561 +460,1136 @@ export default function Reservation() {
    * ==========================================
    */
   return (
-    <div className="booking-panel">
+    <div className="booking-page">
 
-      <div className="eyebrow">
-        Sakura Ananda • Reservation
-      </div>
+      <div className="booking-glow" />
 
-      <h1>
-        Reserve your stay.
-      </h1>
+      <div className="booking-panel">
 
-      <p className="muted">
-        Your reservation is separate from
-        front-desk check-in. We protect the
-        dates while your request is reviewed
-        by staff.
-      </p>
-
-      <form
-        className="card form-card form"
-        onSubmit={submit}
-      >
-
-        {/* ============================== */}
-        {/* GUEST DETAILS */}
-        {/* ============================== */}
-
-        <div className="row">
-
-          <div className="field">
-
-            <label>
-              Guest name *
-            </label>
-
-            <input
-              required
-              value={f.guest_name}
-              onChange={(e) =>
-                update(
-                  'guest_name',
-                  e.target.value
-                )
-              }
-              placeholder="Full name"
-            />
-
-          </div>
-
-          <div className="field">
-
-            <label>
-              Mobile *
-            </label>
-
-            <input
-              required
-              type="tel"
-              value={f.mobile}
-              onChange={(e) =>
-                update(
-                  'mobile',
-                  e.target.value
-                )
-              }
-              placeholder="Mobile number"
-            />
-
-          </div>
-
+        {/* BRAND */}
+        <div className="brand-mark">
+          <span>SAKURA ANANDA</span>
+          <small>PRIVATE RESORT</small>
         </div>
 
-        <div className="row">
-
-          <div className="field">
-
-            <label>
-              Email
-            </label>
-
-            <input
-              type="email"
-              value={f.email}
-              onChange={(e) =>
-                update(
-                  'email',
-                  e.target.value
-                )
-              }
-              placeholder="you@example.com"
-            />
-
-          </div>
-
-          <div className="field">
-
-            <label>
-              Guests *
-            </label>
-
-            <input
-              type="number"
-              min="1"
-              max={
-                room?.max_guests ||
-                4
-              }
-              value={f.guests}
-              onChange={(e) =>
-                update(
-                  'guests',
-                  e.target.value
-                )
-              }
-            />
-
-          </div>
-
+        <div className="eyebrow">
+          RESERVATION
         </div>
 
-        {/* ============================== */}
-        {/* DATES */}
-        {/* ============================== */}
+        <h1>
+          Reserve your stay.
+        </h1>
 
-        <div className="row">
+        <p className="muted intro">
+          A peaceful stay begins here.
+          Complete your reservation details
+          and our team will review your request.
+        </p>
 
-          <div className="field">
+        <form
+          className="card form-card"
+          onSubmit={submit}
+        >
 
-            <label>
-              Check-in *
-            </label>
+          {/* ================================= */}
+          {/* GUEST DETAILS */}
+          {/* ================================= */}
 
-            <input
-              type="date"
-              required
-              min={
-                new Date()
-                  .toISOString()
-                  .slice(0, 10)
-              }
-              value={f.check_in}
-              onChange={(e) =>
-                update(
-                  'check_in',
-                  e.target.value
-                )
-              }
-            />
-
+          <div className="section-title">
+            <span>01</span>
+            Guest details
           </div>
 
-          <div className="field">
+          <div className="row">
 
-            <label>
-              Check-out *
-            </label>
+            <div className="field">
 
-            <input
-              type="date"
-              required
-              min={
-                f.check_in ||
-                new Date()
-                  .toISOString()
-                  .slice(0, 10)
-              }
-              value={f.check_out}
-              onChange={(e) =>
-                update(
-                  'check_out',
-                  e.target.value
-                )
-              }
-            />
+              <label>
+                Guest name <b>*</b>
+              </label>
 
-          </div>
-
-        </div>
-
-        {/* ============================== */}
-        {/* ROOM */}
-        {/* ============================== */}
-
-        <div className="field">
-
-          <label>
-            Room *
-          </label>
-
-          <select
-            value={f.room_id}
-            onChange={(e) =>
-              update(
-                'room_id',
-                e.target.value
-              )
-            }
-            required
-          >
-
-            {rooms.map((r) => (
-
-              <option
-                key={r.id}
-                value={r.id}
-              >
-                {r.name}
-                {' — ₱'}
-                {Number(
-                  r.rate
-                ).toLocaleString()}
-                /night
-                {' — up to '}
-                {r.max_guests}
-                {' guests'}
-              </option>
-
-            ))}
-
-          </select>
-
-        </div>
-
-        {/* ============================== */}
-        {/* STAY SUMMARY */}
-        {/* ============================== */}
-
-        {nights > 0 && (
-
-          <div className="notice">
-
-            <b>
-              Stay summary
-            </b>
-
-            <div
-              style={{
-                display: 'flex',
-                justifyContent:
-                  'space-between',
-                marginTop: 8,
-              }}
-            >
-
-              <span>
-                {nights}
-                {' '}
-                night
-                {nights !== 1
-                  ? 's'
-                  : ''}
-                {' • '}
-                {room?.name}
-              </span>
-
-              <strong>
-                ₱
-                {total.toLocaleString()}
-              </strong>
+              <input
+                required
+                value={f.guest_name}
+                onChange={(e) =>
+                  updateText(
+                    'guest_name',
+                    e.target.value
+                  )
+                }
+                placeholder="FULL NAME"
+                autoComplete="name"
+              />
 
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                justifyContent:
-                  'space-between',
-                marginTop: 5,
-              }}
-            >
+            <div className="field">
 
-              <span>
-                Suggested deposit (
-                {Math.round(
-                  depositPct * 100
-                )}
-                %)
-              </span>
+              <label>
+                Mobile <b>*</b>
+              </label>
 
-              <strong>
-                ₱
-                {suggested.toLocaleString()}
-              </strong>
+              <input
+                required
+                value={f.mobile}
+                onChange={(e) =>
+                  update(
+                    'mobile',
+                    e.target.value
+                  )
+                }
+                placeholder="09XX XXX XXXX"
+                inputMode="tel"
+                autoComplete="tel"
+              />
+
+              <small className="field-hint">
+                Enter your contact number.
+              </small>
 
             </div>
 
           </div>
 
-        )}
+          <div className="row">
 
-        {/* ============================== */}
-        {/* PAYMENT */}
-        {/* ============================== */}
+            <div className="field">
 
-        <div className="row">
+              <label>
+                Email
+              </label>
+
+              <input
+                type="email"
+                value={f.email}
+                onChange={(e) =>
+                  update(
+                    'email',
+                    e.target.value
+                  )
+                }
+                placeholder="YOU@EXAMPLE.COM"
+                autoComplete="email"
+              />
+
+            </div>
+
+            <div className="field">
+
+              <label>
+                Guests <b>*</b>
+              </label>
+
+              <input
+                type="number"
+                min="1"
+                max={
+                  room?.max_guests ||
+                  4
+                }
+                value={f.guests}
+                onChange={(e) =>
+                  update(
+                    'guests',
+                    e.target.value
+                  )
+                }
+              />
+
+            </div>
+
+          </div>
+
+          {/* ================================= */}
+          {/* DATES */}
+          {/* ================================= */}
+
+          <div className="section-title">
+            <span>02</span>
+            Stay details
+          </div>
+
+          <div className="row">
+
+            <div className="field">
+
+              <label>
+                Check-in <b>*</b>
+              </label>
+
+              <input
+                type="date"
+                required
+                min={today}
+                value={f.check_in}
+                onChange={(e) =>
+                  update(
+                    'check_in',
+                    e.target.value
+                  )
+                }
+              />
+
+            </div>
+
+            <div className="field">
+
+              <label>
+                Check-out <b>*</b>
+              </label>
+
+              <input
+                type="date"
+                required
+                min={
+                  f.check_in || today
+                }
+                value={f.check_out}
+                onChange={(e) =>
+                  update(
+                    'check_out',
+                    e.target.value
+                  )
+                }
+              />
+
+            </div>
+
+          </div>
+
+          {/* ================================= */}
+          {/* ROOM */}
+          {/* ================================= */}
 
           <div className="field">
 
             <label>
-              Payment method *
+              Room <b>*</b>
             </label>
 
             <select
-              value={
-                f.payment_method
-              }
+              value={f.room_id}
               onChange={(e) =>
                 update(
-                  'payment_method',
+                  'room_id',
                   e.target.value
                 )
               }
+              required
             >
 
-              <option>
-                GCash
-              </option>
-
-              <option>
-                Cash
-              </option>
-
-              <option>
-                Maya
-              </option>
-
-              <option>
-                Bank Transfer
-              </option>
+              {rooms.map((r) => (
+                <option
+                  key={r.id}
+                  value={r.id}
+                >
+                  {r.name}
+                  {' — ₱'}
+                  {Number(
+                    r.rate
+                  ).toLocaleString()}
+                  /night
+                  {' — up to '}
+                  {r.max_guests}
+                  {' guests'}
+                </option>
+              ))}
 
             </select>
 
           </div>
 
-          <div className="field">
+          {/* ================================= */}
+          {/* SUMMARY */}
+          {/* ================================= */}
 
-            <label>
-              Deposit paid
-            </label>
+          {nights > 0 && (
+            <div className="notice stay-summary">
 
-            <input
-              type="number"
-              min="0"
-              max={total}
-              value={f.deposit}
-              onChange={(e) =>
-                update(
-                  'deposit',
-                  e.target.value
-                )
-              }
-              placeholder={
-                suggested
-                  ? String(
-                      suggested
-                    )
-                  : '0'
-              }
-            />
+              <div className="summary-heading">
+                <span>
+                  YOUR STAY
+                </span>
+
+                <span>
+                  {nights}{' '}
+                  night
+                  {nights !== 1
+                    ? 's'
+                    : ''}
+                </span>
+              </div>
+
+              <div className="summary-line">
+
+                <span>
+                  {room?.name}
+                </span>
+
+                <strong>
+                  ₱
+                  {total.toLocaleString()}
+                </strong>
+
+              </div>
+
+              <div className="summary-line subtle">
+
+                <span>
+                  Suggested deposit (
+                  {Math.round(
+                    depositPct * 100
+                  )}
+                  %)
+                </span>
+
+                <strong>
+                  ₱
+                  {suggested.toLocaleString()}
+                </strong>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* ================================= */}
+          {/* PAYMENT */}
+          {/* ================================= */}
+
+          <div className="section-title">
+            <span>03</span>
+            Payment
+          </div>
+
+          <div className="row">
+
+            <div className="field">
+
+              <label>
+                Payment method <b>*</b>
+              </label>
+
+              <select
+                value={
+                  f.payment_method
+                }
+                onChange={(e) =>
+                  update(
+                    'payment_method',
+                    e.target.value
+                  )
+                }
+              >
+
+                <option>
+                  GCash
+                </option>
+
+                <option>
+                  Cash
+                </option>
+
+                <option>
+                  Maya
+                </option>
+
+                <option>
+                  Bank Transfer
+                </option>
+
+              </select>
+
+            </div>
+
+            <div className="field">
+
+              <label>
+                Deposit paid
+              </label>
+
+              <input
+                type="number"
+                min="0"
+                max={total}
+                value={f.deposit}
+                onChange={(e) =>
+                  update(
+                    'deposit',
+                    e.target.value
+                  )
+                }
+                placeholder={
+                  suggested
+                    ? String(
+                        suggested
+                      )
+                    : '0'
+                }
+              />
+
+            </div>
 
           </div>
 
-        </div>
+          {/* ================================= */}
+          {/* GCASH */}
+          {/* ================================= */}
 
-        {/* ============================== */}
-        {/* PAYMENT INFORMATION */}
-        {/* ============================== */}
+          {qr &&
+            f.payment_method ===
+              'GCash' && (
 
-        {qr &&
-          f.payment_method ===
-            'GCash' && (
+            <div className="notice payment-box">
 
-          <div className="notice">
+              <div className="payment-title">
+                <span className="payment-icon">
+                  ₱
+                </span>
 
-            <b>
-              GCash payment
-            </b>
+                <div>
+                  <b>
+                    GCash payment
+                  </b>
 
-            <p>
-              Scan the resort QR,
-              then enter your payment
-              reference below.
-            </p>
+                  <p>
+                    Scan the QR code to
+                    make your deposit.
+                  </p>
+                </div>
+              </div>
 
-            <img
-              className="qr"
-              src={qr}
-              alt="Sakura Ananda GCash QR"
-            />
+              <div className="qr-wrapper">
+                <img
+                  className="qr"
+                  src={qr}
+                  alt="Sakura Ananda GCash QR"
+                />
+              </div>
 
-            <p
-              className="muted"
-              style={{
-                marginTop: 10,
-              }}
-            >
-              Your payment will remain
-              <strong>
-                {' '}
-                UNPAID
-              </strong>
-              {' '}
-              until staff verifies it.
-            </p>
+              <p className="payment-note">
+                Your payment will remain
+                <strong> UNPAID </strong>
+                until staff verifies it.
+              </p>
+
+            </div>
+          )}
+
+          {/* ================================= */}
+          {/* PAYMENT REFERENCE */}
+          {/* ================================= */}
+
+          <div className="row">
+
+            <div className="field">
+
+              <label>
+                Payment reference
+              </label>
+
+              <input
+                value={
+                  f.payment_ref
+                }
+                onChange={(e) =>
+                  updateText(
+                    'payment_ref',
+                    e.target.value
+                  )
+                }
+                placeholder="OPTIONAL REFERENCE NUMBER"
+              />
+
+            </div>
+
+            <div className="field">
+
+              <label>
+                Payment proof link
+              </label>
+
+              <input
+                value={
+                  f.payment_proof_url
+                }
+                onChange={(e) =>
+                  update(
+                    'payment_proof_url',
+                    e.target.value
+                  )
+                }
+                placeholder="OPTIONAL IMAGE LINK"
+              />
+
+            </div>
 
           </div>
 
-        )}
+          {/* ================================= */}
+          {/* SPECIAL REQUESTS */}
+          {/* ================================= */}
 
-        {/* ============================== */}
-        {/* PAYMENT REFERENCE */}
-        {/* ============================== */}
-
-        <div className="row">
+          <div className="section-title">
+            <span>04</span>
+            Additional information
+          </div>
 
           <div className="field">
 
             <label>
-              Payment reference
+              Special requests
             </label>
 
-            <input
-              value={f.payment_ref}
-              onChange={(e) =>
-                update(
-                  'payment_ref',
-                  e.target.value
-                )
-              }
-              placeholder="Optional reference number"
-            />
-
-          </div>
-
-          <div className="field">
-
-            <label>
-              Payment proof link
-            </label>
-
-            <input
+            <textarea
               value={
-                f.payment_proof_url
+                f.special_requests
               }
               onChange={(e) =>
-                update(
-                  'payment_proof_url',
+                updateText(
+                  'special_requests',
                   e.target.value
                 )
               }
-              placeholder="Optional image link"
+              placeholder="ARRIVAL NOTES, CELEBRATIONS, SPECIAL REQUESTS, ETC."
+              rows={4}
             />
 
           </div>
 
-        </div>
+          {/* ================================= */}
+          {/* CONSENT */}
+          {/* ================================= */}
 
-        {/* ============================== */}
-        {/* SPECIAL REQUESTS */}
-        {/* ============================== */}
+          <label className="consent">
 
-        <div className="field">
+            <input
+              type="checkbox"
+              checked={
+                f.notification_consent
+              }
+              onChange={(e) =>
+                update(
+                  'notification_consent',
+                  e.target.checked
+                )
+              }
+            />
 
-          <label>
-            Special requests
+            <span>
+              I agree to receive booking
+              updates and reminders by SMS
+              and/or email using the contact
+              details above.
+            </span>
+
           </label>
 
-          <textarea
-            value={
-              f.special_requests
-            }
-            onChange={(e) =>
-              update(
-                'special_requests',
-                e.target.value
-              )
-            }
-            placeholder="Arrival notes, celebrations, etc."
-          />
+          {/* ================================= */}
+          {/* MESSAGE */}
+          {/* ================================= */}
 
-        </div>
+          {msg && (
+            <div
+              className={`notice ${
+                msg.startsWith(
+                  'Your reservation'
+                )
+                  ? 'success'
+                  : 'error'
+              }`}
+            >
+              {msg}
+            </div>
+          )}
 
-        {/* ============================== */}
-        {/* CONSENT */}
-        {/* ============================== */}
+          {/* ================================= */}
+          {/* SUBMIT */}
+          {/* ================================= */}
 
-        <label
-          style={{
-            display: 'flex',
-            gap: 10,
-            alignItems:
-              'flex-start',
-            fontSize: 12,
-            color: '#6f625b',
-          }}
-        >
-
-          <input
-            type="checkbox"
-            checked={
-              f.notification_consent
-            }
-            onChange={(e) =>
-              update(
-                'notification_consent',
-                e.target.checked
-              )
-            }
-          />
-
-          <span>
-            I agree to receive booking
-            updates and reminders by SMS
-            and/or email using the contact
-            details above.
-          </span>
-
-        </label>
-
-        {/* ============================== */}
-        {/* MESSAGE */}
-        {/* ============================== */}
-
-        {msg && (
-
-          <div
-            className={`notice ${
-              msg.startsWith(
-                'Your reservation'
-              )
-                ? 'success'
-                : 'error'
-            }`}
+          <button
+            type="submit"
+            className="btn"
+            disabled={busy}
           >
-            {msg}
-          </div>
 
-        )}
+            <span>
+              {busy
+                ? 'Securing your dates…'
+                : 'Submit reservation request'}
+            </span>
 
-        {/* ============================== */}
-        {/* SUBMIT */}
-        {/* ============================== */}
+            {!busy && (
+              <span className="arrow">
+                →
+              </span>
+            )}
 
-        <button
-          className="btn"
-          disabled={busy}
-          type="submit"
-        >
+          </button>
 
-          {busy
-            ? 'Securing your dates…'
-            : 'Submit reservation request'}
+          <p className="secure-note">
+            ✦ Your reservation details are
+            securely submitted for staff review.
+          </p>
 
-        </button>
+        </form>
 
-      </form>
+      </div>
+
+      {/* ===================================== */}
+      {/* PAGE STYLES */}
+      {/* ===================================== */}
+
+      <style jsx global>{`
+
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          margin: 0;
+          background:
+            linear-gradient(
+              135deg,
+              #faf7f2 0%,
+              #f5eee7 45%,
+              #f8f1ec 100%
+            );
+          color: #302723;
+        }
+
+        .booking-page {
+          min-height: 100vh;
+          position: relative;
+          overflow: hidden;
+          padding: 70px 20px 100px;
+          font-family:
+            Inter,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
+        }
+
+        .booking-glow {
+          position: absolute;
+          width: 520px;
+          height: 520px;
+          border-radius: 50%;
+          background:
+            radial-gradient(
+              circle,
+              rgba(190, 145, 120, .18),
+              transparent 70%
+            );
+          top: -180px;
+          right: -160px;
+          pointer-events: none;
+        }
+
+        .booking-panel {
+          width: 100%;
+          max-width: 920px;
+          margin: 0 auto;
+          position: relative;
+          z-index: 1;
+        }
+
+        .brand-mark {
+          text-align: center;
+          margin-bottom: 42px;
+          color: #5b4034;
+          letter-spacing: .18em;
+        }
+
+        .brand-mark span {
+          display: block;
+          font-family:
+            Georgia,
+            "Times New Roman",
+            serif;
+          font-size: 23px;
+          font-weight: 600;
+          letter-spacing: .22em;
+        }
+
+        .brand-mark small {
+          display: block;
+          margin-top: 7px;
+          font-size: 9px;
+          letter-spacing: .42em;
+          color: #a88775;
+        }
+
+        .eyebrow {
+          text-align: center;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: .28em;
+          color: #a37862;
+          margin-bottom: 14px;
+        }
+
+        h1 {
+          text-align: center;
+          font-family:
+            Georgia,
+            "Times New Roman",
+            serif;
+          font-size: clamp(38px, 6vw, 64px);
+          font-weight: 400;
+          line-height: 1.05;
+          color: #392a25;
+          margin: 0;
+        }
+
+        .muted {
+          color: #81736c;
+          line-height: 1.7;
+        }
+
+        .intro {
+          max-width: 650px;
+          text-align: center;
+          margin: 18px auto 42px;
+          font-size: 15px;
+        }
+
+        .card {
+          background:
+            rgba(255, 253, 250, .88);
+          border: 1px solid
+            rgba(146, 111, 91, .15);
+          border-radius: 26px;
+          box-shadow:
+            0 25px 70px
+              rgba(82, 55, 43, .10),
+            0 4px 14px
+              rgba(82, 55, 43, .05);
+          backdrop-filter: blur(12px);
+        }
+
+        .form-card {
+          padding: clamp(24px, 5vw, 48px);
+        }
+
+        .row {
+          display: grid;
+          grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+          gap: 22px;
+          margin-bottom: 22px;
+        }
+
+        .field {
+          display: flex;
+          flex-direction: column;
+          gap: 9px;
+          margin-bottom: 22px;
+        }
+
+        .field label {
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: .12em;
+          text-transform: uppercase;
+          color: #65544c;
+        }
+
+        .field label b {
+          color: #b26d63;
+        }
+
+        input,
+        select,
+        textarea {
+          width: 100%;
+          border: 1px solid #e3d8d0;
+          border-radius: 13px;
+          background: #fffdfb;
+          color: #302723;
+          font-family: inherit;
+          font-size: 14px;
+          outline: none;
+          transition:
+            border-color .2s ease,
+            box-shadow .2s ease,
+            background .2s ease;
+        }
+
+        input,
+        select {
+          height: 52px;
+          padding: 0 16px;
+        }
+
+        textarea {
+          padding: 15px 16px;
+          resize: vertical;
+          min-height: 110px;
+          line-height: 1.6;
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+          color: #b3a69f;
+          letter-spacing: .04em;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+          border-color: #b9927d;
+          background: #fff;
+          box-shadow:
+            0 0 0 4px
+              rgba(185, 146, 125, .10);
+        }
+
+        input[type="date"] {
+          color-scheme: light;
+        }
+
+        input[type="number"] {
+          appearance: textfield;
+        }
+
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+          opacity: .5;
+        }
+
+        .field-hint {
+          font-size: 11px;
+          color: #9b8d85;
+        }
+
+        .section-title {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin: 10px 0 24px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid #eee4dd;
+          font-family:
+            Georgia,
+            "Times New Roman",
+            serif;
+          font-size: 20px;
+          color: #4b3830;
+        }
+
+        .section-title span {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          background: #eee1d8;
+          color: #8d6654;
+          font-family: inherit;
+          font-size: 11px;
+        }
+
+        .notice {
+          padding: 18px 20px;
+          margin: 12px 0 24px;
+          border-radius: 16px;
+          background: #f7f1ec;
+          border: 1px solid #e8ddd5;
+          color: #62534c;
+          line-height: 1.6;
+        }
+
+        .notice p {
+          margin:
+            7px 0 0;
+        }
+
+        .notice.success {
+          background: #f0f5ef;
+          border-color: #d8e5d5;
+          color: #50634d;
+        }
+
+        .notice.error {
+          background: #fbefed;
+          border-color: #efd2ce;
+          color: #9a554d;
+        }
+
+        .stay-summary {
+          background:
+            linear-gradient(
+              135deg,
+              #f8f1ec,
+              #f4ebe4
+            );
+        }
+
+        .summary-heading,
+        .summary-line {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 15px;
+        }
+
+        .summary-heading {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: .15em;
+          color: #9a7968;
+          margin-bottom: 13px;
+        }
+
+        .summary-line {
+          font-size: 15px;
+          color: #4d3b33;
+        }
+
+        .summary-line strong {
+          color: #754f3d;
+          font-size: 17px;
+        }
+
+        .summary-line.subtle {
+          margin-top: 10px;
+          padding-top: 10px;
+          border-top: 1px solid
+            rgba(120, 90, 70, .10);
+          font-size: 12px;
+          color: #85766e;
+        }
+
+        .summary-line.subtle strong {
+          font-size: 13px;
+        }
+
+        .payment-box {
+          text-align: center;
+        }
+
+        .payment-title {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 13px;
+          text-align: left;
+        }
+
+        .payment-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: #eadbd2;
+          color: #775341;
+          font-weight: 700;
+        }
+
+        .payment-title p {
+          margin: 4px 0 0;
+          font-size: 12px;
+          color: #8c7c74;
+        }
+
+        .qr-wrapper {
+          display: flex;
+          justify-content: center;
+          margin: 22px 0 15px;
+        }
+
+        .qr {
+          width: 220px;
+          max-width: 100%;
+          padding: 10px;
+          border-radius: 15px;
+          background: #fff;
+          border: 1px solid #e4d9d1;
+          box-shadow:
+            0 12px 30px
+              rgba(70, 48, 38, .08);
+        }
+
+        .payment-note {
+          font-size: 12px;
+          color: #8a7a72;
+        }
+
+        .payment-note strong {
+          color: #9a554d;
+        }
+
+        .consent {
+          display: flex;
+          align-items: flex-start;
+          gap: 11px;
+          margin: 8px 0 24px;
+          font-size: 12px;
+          line-height: 1.6;
+          color: #786b64;
+          cursor: pointer;
+        }
+
+        .consent input {
+          width: 17px;
+          height: 17px;
+          min-width: 17px;
+          margin-top: 1px;
+          accent-color: #96715f;
+        }
+
+        .btn {
+          width: 100%;
+          height: 58px;
+          border: 0;
+          border-radius: 15px;
+          background:
+            linear-gradient(
+              135deg,
+              #6d4d3e,
+              #8c6551
+            );
+          color: #fff;
+          font-family: inherit;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: .12em;
+          text-transform: uppercase;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 15px;
+          box-shadow:
+            0 12px 30px
+              rgba(94, 65, 52, .22);
+          transition:
+            transform .2s ease,
+            box-shadow .2s ease,
+            opacity .2s ease;
+        }
+
+        .btn:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow:
+            0 17px 36px
+              rgba(94, 65, 52, .28);
+        }
+
+        .btn:active:not(:disabled) {
+          transform: translateY(0);
+        }
+
+        .btn:disabled {
+          opacity: .65;
+          cursor: not-allowed;
+        }
+
+        .arrow {
+          font-size: 20px;
+          font-weight: 400;
+        }
+
+        .secure-note {
+          text-align: center;
+          color: #a0938c;
+          font-size: 10px;
+          letter-spacing: .04em;
+          margin:
+            18px 0 0;
+        }
+
+        /* SUCCESS */
+
+        .success-card {
+          max-width: 680px;
+          margin: 30px auto 0;
+          padding: clamp(28px, 5vw, 48px);
+        }
+
+        .pill {
+          display: inline-flex;
+          align-items: center;
+          padding: 7px 12px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: .08em;
+          text-transform: uppercase;
+        }
+
+        .pill.success {
+          background: #eaf2e8;
+          color: #60755c;
+        }
+
+        .booking-label {
+          margin-top: 30px;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: .2em;
+          color: #a18576;
+        }
+
+        .success-card h2 {
+          margin:
+            7px 0 12px;
+          font-family:
+            Georgia,
+            "Times New Roman",
+            serif;
+          font-size: clamp(34px, 8vw, 48px);
+          color: #4b362d;
+          word-break: break-word;
+        }
+
+        .success-card > p {
+          color: #756861;
+          line-height: 1.7;
+        }
+
+        @media (max-width: 700px) {
+
+          .booking-page {
+            padding:
+              45px 14px 70px;
+          }
+
+          .row {
+            grid-template-columns: 1fr;
+            gap: 0;
+            margin-bottom: 0;
+          }
+
+          .form-card {
+            padding: 22px;
+            border-radius: 20px;
+          }
+
+          .brand-mark {
+            margin-bottom: 30px;
+          }
+
+          .brand-mark span {
+            font-size: 18px;
+          }
+
+          .section-title {
+            margin-top: 6px;
+          }
+
+          .success-card {
+            padding: 25px;
+          }
+
+        }
+
+      `}</style>
 
     </div>
   );

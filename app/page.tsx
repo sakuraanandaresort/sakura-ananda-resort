@@ -21,7 +21,7 @@ export default function Home() {
           aria-hidden="true"
         >
           <source
-            src="/sakura-ananda-montage.mp4"
+            src="/Sakura.mp4"
             type="video/mp4"
           />
         </video>

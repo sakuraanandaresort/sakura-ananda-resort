@@ -325,13 +325,6 @@ export default function Admin() {
       guests:
         Number(r.guests || 1),
 
-      /*
-       * IMPORTANT:
-       *
-       * room_id remains the UUID.
-       *
-       * The dropdown displays room.name.
-       */
       room_id:
         r.room_id || '',
 
@@ -393,7 +386,7 @@ export default function Admin() {
     value: string | number
   ) {
     setEditForm(
-      (current) => ({
+      current => ({
         ...current,
         [field]: value,
       })
@@ -404,13 +397,6 @@ export default function Admin() {
    * ============================================================
    * ROOM CHANGE
    * ============================================================
-   *
-   * When staff chooses "Room 2":
-   *
-   * UI = Room 2
-   *
-   * Database =
-   * Room 2 UUID
    */
 
   function handleRoomChange(
@@ -418,15 +404,16 @@ export default function Admin() {
   ) {
     const selectedRoom =
       rooms.find(
-        (room) =>
+        room =>
           room.id === roomId
       );
 
     setEditForm(
-      (current) => ({
+      current => ({
         ...current,
 
-        room_id: roomId,
+        room_id:
+          roomId,
 
         rate_per_night:
           selectedRoom
@@ -440,7 +427,7 @@ export default function Admin() {
 
   /*
    * ============================================================
-   * RECALCULATE TOTAL
+   * CALCULATE TOTAL
    * ============================================================
    */
 
@@ -461,9 +448,7 @@ export default function Admin() {
       !checkOut ||
       rate <= 0
     ) {
-      return Number(
-        editForm.room_total || 0
-      );
+      return 0;
     }
 
     const start =
@@ -492,10 +477,173 @@ export default function Admin() {
         )
       );
 
-    return (
-      nights *
-      rate
-    );
+    return nights * rate;
+  }
+
+  /*
+   * ============================================================
+   * GOOGLE SHEETS SYNC
+   * ============================================================
+   */
+
+  async function syncToGoogleSheets(
+    reservation: R
+  ) {
+    const webhook =
+      process.env
+        .NEXT_PUBLIC_GOOGLE_SHEETS_WEBHOOK_URL;
+
+    if (!webhook) {
+      throw new Error(
+        'Google Sheets webhook URL is not configured.'
+      );
+    }
+
+    const room =
+      rooms.find(
+        r =>
+          r.id ===
+          reservation.room_id
+      );
+
+    const payload = {
+      action:
+        'update_reservation',
+
+      id:
+        reservation.id,
+
+      booking_id:
+        reservation.booking_id,
+
+      guest_name:
+        reservation.guest_name || '',
+
+      mobile:
+        reservation.mobile || '',
+
+      email:
+        reservation.email || '',
+
+      check_in:
+        reservation.check_in || '',
+
+      check_out:
+        reservation.check_out || '',
+
+      guests:
+        Number(
+          reservation.guests || 1
+        ),
+
+      room_id:
+        reservation.room_id || '',
+
+      room_name:
+        reservation.room?.name ||
+        room?.name ||
+        '',
+
+      rate_per_night:
+        Number(
+          reservation.rate_per_night ||
+            0
+        ),
+
+      room_total:
+        Number(
+          reservation.room_total ||
+            0
+        ),
+
+      deposit:
+        Number(
+          reservation.deposit || 0
+        ),
+
+      balance:
+        Number(
+          reservation.balance || 0
+        ),
+
+      payment_method:
+        reservation.payment_method ||
+        '',
+
+      payment_ref:
+        reservation.payment_ref ||
+        '',
+
+      special_requests:
+        reservation.special_requests ||
+        '',
+
+      status:
+        reservation.status || '',
+
+      checked_out_at:
+        reservation.checked_out_at ||
+        '',
+
+      created_at:
+        reservation.created_at ||
+        '',
+    };
+
+    const response =
+      await fetch(
+        webhook,
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type':
+              'text/plain;charset=utf-8',
+          },
+
+          body:
+            JSON.stringify(
+              payload
+            ),
+        }
+      );
+
+    const text =
+      await response.text();
+
+    let result: any = null;
+
+    try {
+      result =
+        JSON.parse(text);
+    } catch {
+      result = {
+        success:
+          response.ok,
+        message:
+          text,
+      };
+    }
+
+    if (
+      !response.ok
+    ) {
+      throw new Error(
+        `Google Sheets returned HTTP ${response.status}.`
+      );
+    }
+
+    if (
+      result &&
+      result.success === false
+    ) {
+      throw new Error(
+        result.message ||
+          'Google Sheets rejected the update.'
+      );
+    }
+
+    return result;
   }
 
   /*
@@ -579,7 +727,7 @@ export default function Admin() {
     }
 
     /*
-     * CALCULATE TOTAL
+     * CALCULATE
      */
 
     const calculatedTotal =
@@ -598,12 +746,7 @@ export default function Admin() {
       );
 
     /*
-     * IMPORTANT:
-     *
-     * room_id is saved as UUID.
-     *
-     * The user never has to manually enter
-     * the UUID.
+     * SUPABASE UPDATE
      */
 
     const updateData: any = {
@@ -669,10 +812,6 @@ export default function Admin() {
         new Date().toISOString();
     }
 
-    /*
-     * UPDATE SUPABASE
-     */
-
     const {
       data,
       error,
@@ -690,105 +829,84 @@ export default function Admin() {
 
     if (error) {
       setError(
-        error.message
+        `Unable to update reservation: ${error.message}`
       );
 
       setBusy(null);
       return;
     }
 
+    if (!data) {
+      setError(
+        'No updated reservation was returned.'
+      );
+
+      setBusy(null);
+      return;
+    }
+
+    const updatedReservation =
+      data as R;
+
     /*
-     * UPDATE SCREEN
+     * UPDATE LOCAL SCREEN FIRST
      */
 
     setRows(
-      (current) =>
+      current =>
         current.map(
-          (r) =>
+          r =>
             r.id ===
             editingReservation.id
-              ? (data as R)
+              ? updatedReservation
               : r
         )
     );
 
-    setToast(
-      `Reservation ${editingReservation.booking_id} updated successfully.`
-    );
-
-    setEditingReservation(
-      null
-    );
-
     /*
-     * Reload so the room relationship
-     * is guaranteed to be refreshed.
+     * GOOGLE SHEETS
      */
 
-    await load();
-
-    setBusy(null);
-  }
-
-  /*
-   * ============================================================
-   * DELETE RESERVATION
-   * ============================================================
-   */
-
-  async function deleteReservation(
-    r: R
-  ) {
-    const confirmed =
-      window.confirm(
-        `Delete reservation ${r.booking_id} for ${r.guest_name}?\n\nThis action cannot be undone.`
+    try {
+      await syncToGoogleSheets(
+        updatedReservation
       );
+    } catch (sheetError: any) {
+      /*
+       * Supabase succeeded but
+       * Google Sheets failed.
+       */
 
-    if (!confirmed) {
-      return;
-    }
-
-    setBusy(
-      `delete-${r.id}`
-    );
-
-    setError('');
-    setToast('');
-
-    const {
-      error,
-    } = await s
-      .from('reservations')
-      .delete()
-      .eq(
-        'id',
-        r.id
-      );
-
-    if (error) {
       setError(
-        error.message
+        `Reservation saved in Supabase, but Google Sheets was not updated: ${
+          sheetError?.message ||
+          'Unknown Google Sheets error.'
+        }`
       );
 
       setBusy(null);
       return;
     }
 
-    setRows(
-      (current) =>
-        current.filter(
-          (item) =>
-            item.id !== r.id
-        )
-    );
+    /*
+     * CLOSE MODAL
+     */
+
+    setEditingReservation(null);
+
+    /*
+     * RELOAD SUPABASE
+     */
+
+    await load();
 
     setToast(
-      `Reservation ${r.booking_id} deleted.`
+      `Reservation ${
+        updatedReservation.booking_id
+      } updated successfully. Google Sheets synchronized.`
     );
 
     setBusy(null);
-
-    await load();
   }
 
   /*
@@ -818,6 +936,7 @@ export default function Admin() {
     }
 
     const {
+      data,
       error,
     } = await s
       .from('reservations')
@@ -825,13 +944,39 @@ export default function Admin() {
       .eq(
         'id',
         id
-      );
+      )
+      .select(
+        '*, room:rooms(*)'
+      )
+      .single();
 
     if (error) {
       setError(
         error.message
       );
 
+      setBusy(null);
+      return;
+    }
+
+    /*
+     * Also synchronize status
+     * to Google Sheets.
+     */
+
+    try {
+      await syncToGoogleSheets(
+        data as R
+      );
+    } catch (sheetError: any) {
+      setError(
+        `Status updated in Supabase, but Google Sheets was not updated: ${
+          sheetError?.message ||
+          'Unknown error.'
+        }`
+      );
+
+      await load();
       setBusy(null);
       return;
     }
@@ -863,7 +1008,7 @@ export default function Admin() {
 
     const reservation =
       rows.find(
-        (r) =>
+        r =>
           r.id === id
       );
 
@@ -894,6 +1039,7 @@ export default function Admin() {
     }
 
     const {
+      data,
       error,
     } = await s
       .from('reservations')
@@ -905,13 +1051,34 @@ export default function Admin() {
       .eq(
         'id',
         id
-      );
+      )
+      .select(
+        '*, room:rooms(*)'
+      )
+      .single();
 
     if (error) {
       setError(
         error.message
       );
 
+      setBusy(null);
+      return;
+    }
+
+    try {
+      await syncToGoogleSheets(
+        data as R
+      );
+    } catch (sheetError: any) {
+      setError(
+        `Payment updated in Supabase, but Google Sheets was not updated: ${
+          sheetError?.message ||
+          'Unknown error.'
+        }`
+      );
+
+      await load();
       setBusy(null);
       return;
     }
@@ -945,7 +1112,7 @@ export default function Admin() {
 
     const reservation =
       rows.find(
-        (r) =>
+        r =>
           r.id === id
       );
 
@@ -965,6 +1132,7 @@ export default function Admin() {
       );
 
     const {
+      data,
       error,
     } = await s
       .from('reservations')
@@ -976,13 +1144,34 @@ export default function Admin() {
       .eq(
         'id',
         id
-      );
+      )
+      .select(
+        '*, room:rooms(*)'
+      )
+      .single();
 
     if (error) {
       setError(
         error.message
       );
 
+      setBusy(null);
+      return;
+    }
+
+    try {
+      await syncToGoogleSheets(
+        data as R
+      );
+    } catch (sheetError: any) {
+      setError(
+        `Payment changed in Supabase, but Google Sheets was not updated: ${
+          sheetError?.message ||
+          'Unknown error.'
+        }`
+      );
+
+      await load();
       setBusy(null);
       return;
     }
@@ -1101,28 +1290,28 @@ export default function Admin() {
   const counts = {
     pending:
       rows.filter(
-        (r) =>
+        r =>
           r.status ===
           'Pending'
       ).length,
 
     confirmed:
       rows.filter(
-        (r) =>
+        r =>
           r.status ===
           'Confirmed'
       ).length,
 
     occupied:
       rows.filter(
-        (r) =>
+        r =>
           r.status ===
           'Checked-in'
       ).length,
 
     arrivals:
       rows.filter(
-        (r) =>
+        r =>
           r.check_in ===
             today() &&
           [
@@ -1140,7 +1329,7 @@ export default function Admin() {
 
     unpaid:
       rows.filter(
-        (r) =>
+        r =>
           !isReservationPaid(
             r
           )
@@ -1157,7 +1346,7 @@ export default function Admin() {
     filter === 'All'
       ? rows
       : rows.filter(
-          (r) =>
+          r =>
             r.status ===
             filter
         );
@@ -1207,7 +1396,9 @@ export default function Admin() {
   if (loading) {
     return (
       <>
-        <style jsx global>{luxuryStyles}</style>
+        <style jsx global>
+          {luxuryStyles}
+        </style>
 
         <div className="login-shell luxury-bg">
           <div className="card luxury-loading">
@@ -1233,15 +1424,19 @@ export default function Admin() {
   if (!user) {
     return (
       <>
-        <style jsx global>{luxuryStyles}</style>
+        <style jsx global>
+          {luxuryStyles}
+        </style>
 
         <div className="login-shell luxury-bg">
+
           <div className="brandline luxury-brand">
             <span>桜</span>
             Sakura Ananda Resort
           </div>
 
           <div className="card login-card luxury-login">
+
             <div className="gold-mark">
               桜
             </div>
@@ -1264,6 +1459,7 @@ export default function Admin() {
               className="form"
               onSubmit={login}
             >
+
               <div className="field">
                 <label>
                   Staff email
@@ -1273,7 +1469,7 @@ export default function Admin() {
                   type="email"
                   required
                   value={email}
-                  onChange={(e) =>
+                  onChange={e =>
                     setEmail(
                       e.target.value
                     )
@@ -1291,7 +1487,7 @@ export default function Admin() {
                   type="password"
                   required
                   value={password}
-                  onChange={(e) =>
+                  onChange={e =>
                     setPassword(
                       e.target.value
                     )
@@ -1311,8 +1507,11 @@ export default function Admin() {
               >
                 Enter Staff Dashboard
               </button>
+
             </form>
+
           </div>
+
         </div>
       </>
     );
@@ -1326,14 +1525,18 @@ export default function Admin() {
 
   return (
     <>
-      <style jsx global>{luxuryStyles}</style>
+      <style jsx global>
+        {luxuryStyles}
+      </style>
 
       <div className="dashboard luxury-dashboard">
 
         {/* HEADER */}
 
         <div className="dash-top luxury-header">
+
           <div>
+
             <div className="eyebrow">
               SAKURA ANANDA • PRIVATE RESORT
             </div>
@@ -1346,6 +1549,7 @@ export default function Admin() {
               Reservations, rooms and guest
               experiences — beautifully organized.
             </div>
+
           </div>
 
           <button
@@ -1357,6 +1561,7 @@ export default function Admin() {
           >
             Sign out
           </button>
+
         </div>
 
         {/* NOTICES */}
@@ -1418,6 +1623,7 @@ export default function Admin() {
         {/* ROOMS */}
 
         <div className="section-title luxury-section">
+
           <div>
             <div className="eyebrow">
               ROOMS
@@ -1427,16 +1633,17 @@ export default function Admin() {
               Occupancy
             </h2>
           </div>
+
         </div>
 
         <div className="occupancy-grid">
 
           {rooms.map(
-            (room) => {
+            room => {
 
               const active =
                 rows.find(
-                  (r) =>
+                  r =>
                     r.room_id ===
                       room.id &&
                     r.status ===
@@ -1445,7 +1652,7 @@ export default function Admin() {
 
               const upcoming =
                 rows.find(
-                  (r) =>
+                  r =>
                     r.room_id ===
                       room.id &&
                     r.status ===
@@ -1461,6 +1668,7 @@ export default function Admin() {
                 >
 
                   <div className="room-top">
+
                     <span
                       className={`pill ${
                         active
@@ -1476,6 +1684,7 @@ export default function Admin() {
                     <span className="room-symbol">
                       桜
                     </span>
+
                   </div>
 
                   <h3>
@@ -1489,6 +1698,7 @@ export default function Admin() {
                     ).toLocaleString(
                       'en-PH'
                     )}
+
                     <small>
                       / night
                     </small>
@@ -1546,7 +1756,9 @@ export default function Admin() {
             marginTop: 42,
           }}
         >
+
           <div>
+
             <div className="eyebrow">
               PLANNING
             </div>
@@ -1554,17 +1766,19 @@ export default function Admin() {
             <h2>
               Availability calendar
             </h2>
+
           </div>
 
           <input
             type="month"
             value={month}
-            onChange={(e) =>
+            onChange={e =>
               setMonth(
                 e.target.value
               )
             }
           />
+
         </div>
 
         <div className="card calendar-wrap luxury-card">
@@ -1580,7 +1794,7 @@ export default function Admin() {
               'Fri',
               'Sat',
             ].map(
-              (x) => (
+              x => (
                 <div
                   className="calendar-head"
                   key={x}
@@ -1634,11 +1848,11 @@ export default function Admin() {
                     </div>
 
                     {rooms.map(
-                      (room) => {
+                      room => {
 
                         const booked =
                           rows.some(
-                            (r) =>
+                            r =>
                               r.room_id ===
                                 room.id &&
                               [
@@ -1661,6 +1875,7 @@ export default function Admin() {
                               room.id
                             }
                           >
+
                             <i
                               className={
                                 booked
@@ -1675,6 +1890,7 @@ export default function Admin() {
                                 'R'
                               )}
                             </span>
+
                           </div>
                         );
                       }
@@ -1686,6 +1902,7 @@ export default function Admin() {
             )}
 
           </div>
+
         </div>
 
         {/* GCASH */}
@@ -1696,7 +1913,9 @@ export default function Admin() {
             marginTop: 42,
           }}
         >
+
           <div>
+
             <div className="eyebrow">
               GUEST COMMUNICATION
             </div>
@@ -1704,7 +1923,9 @@ export default function Admin() {
             <h2>
               GCash QR
             </h2>
+
           </div>
+
         </div>
 
         <div className="card luxury-card">
@@ -1745,6 +1966,7 @@ export default function Admin() {
             </div>
 
             <div className="notice">
+
               <b>
                 Email & SMS notifications
               </b>
@@ -1755,9 +1977,11 @@ export default function Admin() {
                 by your Google Sheets +
                 Apps Script workflow.
               </p>
+
             </div>
 
           </div>
+
         </div>
 
         {/* RESERVATIONS */}
@@ -1770,6 +1994,7 @@ export default function Admin() {
         >
 
           <div>
+
             <div className="eyebrow">
               FRONT DESK
             </div>
@@ -1779,19 +2004,21 @@ export default function Admin() {
             </h2>
 
             <p className="muted">
-              Edit, update, manage payments
-              or remove reservations.
+              Edit reservations, update
+              payments and manage status.
             </p>
+
           </div>
 
           <select
             value={filter}
-            onChange={(e) =>
+            onChange={e =>
               setFilter(
                 e.target.value
               )
             }
           >
+
             <option value="All">
               All reservations
             </option>
@@ -1815,6 +2042,7 @@ export default function Admin() {
             <option value="Cancelled">
               Cancelled
             </option>
+
           </select>
 
         </div>
@@ -1826,6 +2054,7 @@ export default function Admin() {
           <table className="table luxury-table">
 
             <thead>
+
               <tr>
                 <th>Booking</th>
                 <th>Guest</th>
@@ -1835,13 +2064,16 @@ export default function Admin() {
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
+
             </thead>
 
             <tbody>
 
               {filtered.length ===
               0 ? (
+
                 <tr>
+
                   <td
                     colSpan={7}
                     style={{
@@ -1850,14 +2082,19 @@ export default function Admin() {
                       padding: 50,
                     }}
                   >
+
                     <span className="muted">
                       No reservations found.
                     </span>
+
                   </td>
+
                 </tr>
+
               ) : (
+
                 filtered.map(
-                  (r) => {
+                  r => {
 
                     const isPaid =
                       isReservationPaid(
@@ -1867,10 +2104,6 @@ export default function Admin() {
                     const paymentBusy =
                       busy ===
                       `payment-${r.id}`;
-
-                    const deleteBusy =
-                      busy ===
-                      `delete-${r.id}`;
 
                     const status =
                       paymentStatus(
@@ -1885,6 +2118,7 @@ export default function Admin() {
                         {/* BOOKING */}
 
                         <td>
+
                           <b>
                             {
                               r.booking_id
@@ -1900,11 +2134,13 @@ export default function Admin() {
                               'en-PH'
                             )}
                           </span>
+
                         </td>
 
                         {/* GUEST */}
 
                         <td>
+
                           <b>
                             {
                               r.guest_name
@@ -1923,11 +2159,13 @@ export default function Admin() {
                             {r.email ||
                               'No email'}
                           </span>
+
                         </td>
 
                         {/* STAY */}
 
                         <td>
+
                           {
                             r.check_in
                           }
@@ -1945,6 +2183,7 @@ export default function Admin() {
                           <br />
 
                           <span className="muted">
+
                             {r.guests}{' '}
                             guest
                             {Number(
@@ -1952,36 +2191,31 @@ export default function Admin() {
                             ) !== 1
                               ? 's'
                               : ''}
+
                           </span>
+
                         </td>
 
                         {/* ROOM */}
 
                         <td>
 
-                          {/*
-                           * IMPORTANT:
-                           *
-                           * NEVER display r.room_id
-                           * here.
-                           *
-                           * Display the related
-                           * room name.
-                           */}
-
                           <b className="room-name-display">
+
                             {r.room?.name ||
                               rooms.find(
-                                (room) =>
+                                room =>
                                   room.id ===
                                   r.room_id
                               )?.name ||
                               'Room unavailable'}
+
                           </b>
 
                           <br />
 
                           <span className="muted">
+
                             ₱
                             {Number(
                               r.rate_per_night ||
@@ -1989,7 +2223,9 @@ export default function Admin() {
                             ).toLocaleString(
                               'en-PH'
                             )}
+
                             /night
+
                           </span>
 
                         </td>
@@ -2064,6 +2300,7 @@ export default function Admin() {
                           >
 
                             {isPaid ? (
+
                               <div>
 
                                 <span className="pill success">
@@ -2094,7 +2331,9 @@ export default function Admin() {
                                 </button>
 
                               </div>
+
                             ) : (
+
                               <button
                                 type="button"
                                 className="btn green"
@@ -2111,6 +2350,7 @@ export default function Admin() {
                                   ? 'Updating...'
                                   : 'Mark as Paid'}
                               </button>
+
                             )}
 
                           </div>
@@ -2120,6 +2360,7 @@ export default function Admin() {
                         {/* STATUS */}
 
                         <td>
+
                           <span
                             className={`pill ${statusClass(
                               r.status
@@ -2127,6 +2368,7 @@ export default function Admin() {
                           >
                             {r.status}
                           </span>
+
                         </td>
 
                         {/* ACTIONS */}
@@ -2135,7 +2377,7 @@ export default function Admin() {
 
                           <div className="actions luxury-actions">
 
-                            {/* EDIT */}
+                            {/* EDIT ONLY */}
 
                             <button
                               type="button"
@@ -2149,11 +2391,12 @@ export default function Admin() {
                               Edit
                             </button>
 
-                            {/* STATUS */}
+                            {/* PENDING */}
 
                             {r.status ===
                               'Pending' && (
                               <>
+
                                 <button
                                   type="button"
                                   className="btn green"
@@ -2190,12 +2433,16 @@ export default function Admin() {
                                 >
                                   Cancel
                                 </button>
+
                               </>
                             )}
+
+                            {/* CONFIRMED */}
 
                             {r.status ===
                               'Confirmed' && (
                               <>
+
                                 <button
                                   type="button"
                                   className="btn blue"
@@ -2210,7 +2457,10 @@ export default function Admin() {
                                     )
                                   }
                                 >
-                                  Check-in
+                                  {busy ===
+                                  r.id
+                                    ? 'Updating...'
+                                    : 'Check-in'}
                                 </button>
 
                                 <button
@@ -2229,11 +2479,15 @@ export default function Admin() {
                                 >
                                   Cancel
                                 </button>
+
                               </>
                             )}
 
+                            {/* CHECKED IN */}
+
                             {r.status ===
                               'Checked-in' && (
+
                               <button
                                 type="button"
                                 className="btn secondary"
@@ -2250,26 +2504,8 @@ export default function Admin() {
                               >
                                 Checkout
                               </button>
+
                             )}
-
-                            {/* DELETE */}
-
-                            <button
-                              type="button"
-                              className="btn delete-btn"
-                              disabled={
-                                deleteBusy
-                              }
-                              onClick={() =>
-                                deleteReservation(
-                                  r
-                                )
-                              }
-                            >
-                              {deleteBusy
-                                ? 'Deleting...'
-                                : 'Delete'}
-                            </button>
 
                           </div>
 
@@ -2279,6 +2515,7 @@ export default function Admin() {
                     );
                   }
                 )
+
               )}
 
             </tbody>
@@ -2294,15 +2531,18 @@ export default function Admin() {
           ===================================================== */}
 
       {editingReservation && (
+
         <div
           className="modal-backdrop"
-          onMouseDown={(e) => {
+          onMouseDown={e => {
+
             if (
               e.target ===
               e.currentTarget
             ) {
               closeEdit();
             }
+
           }}
         >
 
@@ -2357,6 +2597,7 @@ export default function Admin() {
               <div className="edit-grid">
 
                 <div className="field">
+
                   <label>
                     Guest name
                   </label>
@@ -2366,16 +2607,18 @@ export default function Admin() {
                     value={
                       editForm.guest_name
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       updateEditField(
                         'guest_name',
                         e.target.value
                       )
                     }
                   />
+
                 </div>
 
                 <div className="field">
+
                   <label>
                     Mobile number
                   </label>
@@ -2386,7 +2629,7 @@ export default function Admin() {
                     value={
                       editForm.mobile
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       updateEditField(
                         'mobile',
                         e.target.value
@@ -2394,9 +2637,11 @@ export default function Admin() {
                     }
                     placeholder="+63..."
                   />
+
                 </div>
 
                 <div className="field">
+
                   <label>
                     Email
                   </label>
@@ -2406,16 +2651,18 @@ export default function Admin() {
                     value={
                       editForm.email
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       updateEditField(
                         'email',
                         e.target.value
                       )
                     }
                   />
+
                 </div>
 
                 <div className="field">
+
                   <label>
                     Number of guests
                   </label>
@@ -2426,7 +2673,7 @@ export default function Admin() {
                     value={
                       editForm.guests
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       updateEditField(
                         'guests',
                         Number(
@@ -2435,6 +2682,7 @@ export default function Admin() {
                       )
                     }
                   />
+
                 </div>
 
               </div>
@@ -2448,6 +2696,7 @@ export default function Admin() {
               <div className="edit-grid">
 
                 <div className="field">
+
                   <label>
                     Check-in
                   </label>
@@ -2458,16 +2707,18 @@ export default function Admin() {
                     value={
                       editForm.check_in
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       updateEditField(
                         'check_in',
                         e.target.value
                       )
                     }
                   />
+
                 </div>
 
                 <div className="field">
+
                   <label>
                     Check-out
                   </label>
@@ -2478,16 +2729,18 @@ export default function Admin() {
                     value={
                       editForm.check_out
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       updateEditField(
                         'check_out',
                         e.target.value
                       )
                     }
                   />
+
                 </div>
 
                 <div className="field">
+
                   <label>
                     Room
                   </label>
@@ -2497,18 +2750,20 @@ export default function Admin() {
                     value={
                       editForm.room_id
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       handleRoomChange(
                         e.target.value
                       )
                     }
                   >
+
                     <option value="">
                       Select a room
                     </option>
 
                     {rooms.map(
-                      (room) => (
+                      room => (
+
                         <option
                           key={
                             room.id
@@ -2517,6 +2772,7 @@ export default function Admin() {
                             room.id
                           }
                         >
+
                           {room.name} — ₱
                           {Number(
                             room.rate ||
@@ -2525,13 +2781,18 @@ export default function Admin() {
                             'en-PH'
                           )}
                           /night
+
                         </option>
+
                       )
                     )}
+
                   </select>
+
                 </div>
 
                 <div className="field">
+
                   <label>
                     Rate per night
                   </label>
@@ -2542,7 +2803,7 @@ export default function Admin() {
                     value={
                       editForm.rate_per_night
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       updateEditField(
                         'rate_per_night',
                         Number(
@@ -2551,6 +2812,7 @@ export default function Admin() {
                       )
                     }
                   />
+
                 </div>
 
               </div>
@@ -2564,18 +2826,23 @@ export default function Admin() {
               <div className="edit-grid">
 
                 <div className="field">
+
                   <label>
                     Room total
                   </label>
 
                   <input
                     type="number"
-                    value={calculateEditTotal()}
+                    value={
+                      calculateEditTotal()
+                    }
                     readOnly
                   />
+
                 </div>
 
                 <div className="field">
+
                   <label>
                     Deposit
                   </label>
@@ -2586,7 +2853,7 @@ export default function Admin() {
                     value={
                       editForm.deposit
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       updateEditField(
                         'deposit',
                         Number(
@@ -2595,28 +2862,34 @@ export default function Admin() {
                       )
                     }
                   />
+
                 </div>
 
                 <div className="field">
+
                   <label>
                     Balance
                   </label>
 
                   <input
                     type="number"
-                    value={Math.max(
-                      0,
-                      calculateEditTotal() -
-                        Number(
-                          editForm.deposit ||
-                            0
-                        )
-                    )}
+                    value={
+                      Math.max(
+                        0,
+                        calculateEditTotal() -
+                          Number(
+                            editForm.deposit ||
+                              0
+                          )
+                      )
+                    }
                     readOnly
                   />
+
                 </div>
 
                 <div className="field">
+
                   <label>
                     Payment method
                   </label>
@@ -2625,13 +2898,14 @@ export default function Admin() {
                     value={
                       editForm.payment_method
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       updateEditField(
                         'payment_method',
                         e.target.value
                       )
                     }
                   >
+
                     <option value="GCash">
                       GCash
                     </option>
@@ -2651,10 +2925,13 @@ export default function Admin() {
                     <option value="Other">
                       Other
                     </option>
+
                   </select>
+
                 </div>
 
                 <div className="field">
+
                   <label>
                     Payment reference
                   </label>
@@ -2663,13 +2940,14 @@ export default function Admin() {
                     value={
                       editForm.payment_ref
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       updateEditField(
                         'payment_ref',
                         e.target.value
                       )
                     }
                   />
+
                 </div>
 
               </div>
@@ -2683,6 +2961,7 @@ export default function Admin() {
               <div className="edit-grid">
 
                 <div className="field">
+
                   <label>
                     Status
                   </label>
@@ -2691,13 +2970,14 @@ export default function Admin() {
                     value={
                       editForm.status
                     }
-                    onChange={(e) =>
+                    onChange={e =>
                       updateEditField(
                         'status',
                         e.target.value
                       )
                     }
                   >
+
                     <option value="Pending">
                       Pending
                     </option>
@@ -2717,7 +2997,9 @@ export default function Admin() {
                     <option value="Cancelled">
                       Cancelled
                     </option>
+
                   </select>
+
                 </div>
 
               </div>
@@ -2725,6 +3007,7 @@ export default function Admin() {
               {/* SPECIAL REQUESTS */}
 
               <div className="field">
+
                 <label>
                   Special requests
                 </label>
@@ -2734,7 +3017,7 @@ export default function Admin() {
                   value={
                     editForm.special_requests
                   }
-                  onChange={(e) =>
+                  onChange={e =>
                     updateEditField(
                       'special_requests',
                       e.target.value
@@ -2742,9 +3025,10 @@ export default function Admin() {
                   }
                   placeholder="Guest requests, notes, special arrangements..."
                 />
+
               </div>
 
-              {/* TOTAL PREVIEW */}
+              {/* SUMMARY */}
 
               <div className="edit-summary">
 
@@ -2755,7 +3039,7 @@ export default function Admin() {
 
                   <b>
                     {rooms.find(
-                      (room) =>
+                      room =>
                         room.id ===
                         editForm.room_id
                     )?.name ||
@@ -2839,7 +3123,7 @@ export default function Admin() {
                   }
                 >
                   {busy === 'edit'
-                    ? 'Saving changes...'
+                    ? 'Saving & Syncing...'
                     : 'Save Changes'}
                 </button>
 
@@ -2848,8 +3132,11 @@ export default function Admin() {
             </form>
 
           </div>
+
         </div>
+
       )}
+
     </>
   );
 }
@@ -3069,17 +3356,6 @@ body {
   color: white !important;
 }
 
-.delete-btn {
-  background: transparent !important;
-  color: #a13b32 !important;
-  border: 1px solid rgba(161,59,50,.25) !important;
-}
-
-.delete-btn:hover {
-  background: #a13b32 !important;
-  color: white !important;
-}
-
 .btn.blue {
   background: #536d80;
   color: white;
@@ -3132,6 +3408,7 @@ body {
   border:
     1px solid
     rgba(177,138,69,.22);
+
   box-shadow:
     0 30px 100px rgba(55,40,20,.13);
 }
@@ -3155,16 +3432,20 @@ body {
   width: min(900px, 100%);
   max-height: calc(100vh - 48px);
   overflow-y: auto;
+
   background:
     linear-gradient(
       145deg,
       #fffdf9,
       #f5eee2
     );
+
   border:
     1px solid
     rgba(177,138,69,.25);
+
   border-radius: 22px;
+
   box-shadow:
     0 35px 120px rgba(0,0,0,.28);
 }
@@ -3173,13 +3454,21 @@ body {
   position: sticky;
   top: 0;
   z-index: 2;
+
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+
   padding: 28px 30px 20px;
-  background: rgba(255,253,249,.94);
+
+  background:
+    rgba(255,253,249,.94);
+
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--luxury-border);
+
+  border-bottom:
+    1px solid
+    var(--luxury-border);
 }
 
 .modal-header h2 {
@@ -3193,10 +3482,17 @@ body {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  border: 1px solid var(--luxury-border);
+
+  border:
+    1px solid
+    var(--luxury-border);
+
   background: white;
+
   font-size: 25px;
+
   cursor: pointer;
+
   color: #6d604e;
 }
 
@@ -3208,15 +3504,21 @@ body {
   font-family: Georgia, serif;
   color: #7d5d2f;
   font-size: 17px;
+
   margin: 24px 0 14px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--luxury-border);
+
+  border-bottom:
+    1px solid
+    var(--luxury-border);
 }
 
 .edit-grid {
   display: grid;
+
   grid-template-columns:
     repeat(2, minmax(0, 1fr));
+
   gap: 16px;
 }
 
@@ -3224,14 +3526,22 @@ body {
 .edit-form select,
 .edit-form textarea {
   width: 100%;
+
   border:
     1px solid
     rgba(100,80,45,.18);
-  background: rgba(255,255,255,.78);
+
+  background:
+    rgba(255,255,255,.78);
+
   border-radius: 10px;
+
   padding: 12px 13px;
+
   color: #2b281f;
+
   outline: none;
+
   transition:
     border-color .15s ease,
     box-shadow .15s ease;
@@ -3242,6 +3552,7 @@ body {
 .edit-form textarea:focus {
   border-color:
     rgba(177,138,69,.65);
+
   box-shadow:
     0 0 0 3px
     rgba(177,138,69,.10);
@@ -3253,14 +3564,20 @@ body {
 
 .edit-summary {
   display: grid;
+
   grid-template-columns:
     repeat(4, 1fr);
+
   gap: 10px;
+
   margin-top: 24px;
   padding: 18px;
+
   border-radius: 14px;
+
   background:
     rgba(177,138,69,.08);
+
   border:
     1px solid
     rgba(177,138,69,.16);
@@ -3288,12 +3605,17 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+
   margin-top: 28px;
   padding-top: 20px;
-  border-top: 1px solid var(--luxury-border);
+
+  border-top:
+    1px solid
+    var(--luxury-border);
 }
 
 @media (max-width: 900px) {
+
   .luxury-dashboard {
     padding: 24px 14px 60px;
   }
@@ -3317,6 +3639,7 @@ body {
 }
 
 @media (max-width: 600px) {
+
   .stats {
     grid-template-columns:
       repeat(2, 1fr);
@@ -3331,7 +3654,9 @@ body {
   }
 
   .edit-modal {
-    max-height: calc(100vh - 20px);
+    max-height:
+      calc(100vh - 20px);
+
     border-radius: 16px;
   }
 

@@ -6,9 +6,6 @@ import type { Reservation, Room } from '../../lib/types';
 
 type R = Reservation & {
   room?: Room;
-  payment_status?: string;
-  paid_at?: string | null;
-  payment_updated_at?: string | null;
 };
 
 const statusClass = (s: string) =>
@@ -22,63 +19,158 @@ const statusClass = (s: string) =>
     ? 'info'
     : '';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () =>
+  new Date().toISOString().slice(0, 10);
+
+/*
+ * ============================================================
+ * PAYMENT HELPERS
+ * ============================================================
+ */
+
+function isReservationPaid(r: R) {
+  const total = Number(r.room_total || 0);
+  const deposit = Number(r.deposit || 0);
+  const balance = Number(r.balance || 0);
+
+  return (
+    total > 0 &&
+    deposit >= total &&
+    balance <= 0
+  );
+}
+
+function paymentStatus(r: R) {
+  const total = Number(r.room_total || 0);
+  const deposit = Number(r.deposit || 0);
+  const balance = Number(r.balance || 0);
+
+  if (total <= 0) {
+    return 'Unknown';
+  }
+
+  if (
+    deposit >= total &&
+    balance <= 0
+  ) {
+    return 'Paid';
+  }
+
+  if (
+    deposit > 0 &&
+    balance > 0
+  ) {
+    return 'Partially Paid';
+  }
+
+  return 'Unpaid';
+}
 
 export default function Admin() {
   const s = supabaseBrowser();
 
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] =
+    useState<any>(null);
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] =
+    useState('');
 
-  const [error, setError] = useState('');
-  const [toast, setToast] = useState('');
+  const [password, setPassword] =
+    useState('');
 
-  const [rows, setRows] = useState<R[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [error, setError] =
+    useState('');
 
-  const [qr, setQr] = useState('');
+  const [toast, setToast] =
+    useState('');
 
-  const [month, setMonth] = useState(
-    new Date().toISOString().slice(0, 7)
-  );
+  const [rows, setRows] =
+    useState<R[]>([]);
 
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('All');
+  const [rooms, setRooms] =
+    useState<Room[]>([]);
 
-  const [busy, setBusy] = useState<string | null>(null);
+  const [qr, setQr] =
+    useState('');
+
+  const [month, setMonth] =
+    useState(
+      new Date()
+        .toISOString()
+        .slice(0, 7)
+    );
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [filter, setFilter] =
+    useState('All');
+
+  const [busy, setBusy] =
+    useState<string | null>(null);
 
   /*
+   * ============================================================
    * AUTH
+   * ============================================================
    */
+
   useEffect(() => {
-    s.auth.getUser().then(({ data }) => {
-      setUser(data.user);
+    let mounted = true;
+
+    async function checkUser() {
+      const { data, error } =
+        await s.auth.getUser();
+
+      if (!mounted) return;
+
+      if (error) {
+        setUser(null);
+      } else {
+        setUser(data.user || null);
+      }
+
       setLoading(false);
-    });
+    }
+
+    checkUser();
 
     const {
       data: sub,
-    } = s.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-    });
+    } =
+      s.auth.onAuthStateChange(
+        (_event, session) => {
+          setUser(
+            session?.user || null
+          );
+        }
+      );
 
-    return () => sub.subscription.unsubscribe();
-  }, []);
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [s]);
 
   /*
+   * ============================================================
    * LOGIN
+   * ============================================================
    */
-  async function login(e: React.FormEvent) {
+
+  async function login(
+    e: React.FormEvent
+  ) {
     e.preventDefault();
 
     setError('');
+    setToast('');
 
-    const { error } = await s.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error } =
+      await s.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
     if (error) {
       setError(error.message);
@@ -86,54 +178,78 @@ export default function Admin() {
   }
 
   /*
+   * ============================================================
    * LOAD DATA
-   *
-   * IMPORTANT:
-   * room:rooms(*) gets the actual room name from the rooms table.
-   *
-   * This prevents:
-   *
-   * 1d48f0f4-50cf-4d0c-ad31-738b0ebff2b0
-   *
-   * from appearing as the room name.
-   *
-   * Instead it displays:
-   *
-   * Room 1
+   * ============================================================
    */
+
   async function load() {
     setError('');
 
-    const [reservationsResult, roomsResult, settingsResult] =
-      await Promise.all([
-        s
-          .from('reservations')
-          .select('*, room:rooms(*)')
-          .order('check_in', { ascending: true }),
+    const [
+      reservationsResult,
+      roomsResult,
+      settingsResult,
+    ] = await Promise.all([
+      s
+        .from('reservations')
+        .select(
+          '*, room:rooms(*)'
+        )
+        .order(
+          'check_in',
+          {
+            ascending: true,
+          }
+        ),
 
-        s
-          .from('rooms')
-          .select('*')
-          .order('name'),
+      s
+        .from('rooms')
+        .select('*')
+        .order('name'),
 
-        s
-          .from('settings')
-          .select('value')
-          .eq('key', 'gcash_qr_url')
-          .maybeSingle(),
-      ]);
+      s
+        .from('settings')
+        .select('value')
+        .eq(
+          'key',
+          'gcash_qr_url'
+        )
+        .maybeSingle(),
+    ]);
 
-    if (reservationsResult.error) {
-      setError(reservationsResult.error.message);
+    if (
+      reservationsResult.error
+    ) {
+      setError(
+        reservationsResult.error.message
+      );
+      return;
     }
 
-    if (roomsResult.error) {
-      setError(roomsResult.error.message);
+    if (
+      roomsResult.error
+    ) {
+      setError(
+        roomsResult.error.message
+      );
+      return;
     }
 
-    setRows((reservationsResult.data || []) as R[]);
-    setRooms((roomsResult.data || []) as Room[]);
-    setQr(settingsResult.data?.value || '');
+    setRows(
+      (reservationsResult.data ||
+        []) as R[]
+    );
+
+    setRooms(
+      (roomsResult.data ||
+        []) as Room[]
+    );
+
+    setQr(
+      settingsResult.data?.value ||
+        ''
+    );
   }
 
   useEffect(() => {
@@ -143,9 +259,15 @@ export default function Admin() {
   }, [user]);
 
   /*
+   * ============================================================
    * STATUS UPDATE
+   * ============================================================
    */
-  async function action(id: string, status: string) {
+
+  async function action(
+    id: string,
+    status: string
+  ) {
     setBusy(id);
     setError('');
     setToast('');
@@ -154,14 +276,18 @@ export default function Admin() {
       status,
     };
 
-    if (status === 'Checked-out') {
-      updateData.checked_out_at = new Date().toISOString();
+    if (
+      status === 'Checked-out'
+    ) {
+      updateData.checked_out_at =
+        new Date().toISOString();
     }
 
-    const { error } = await s
-      .from('reservations')
-      .update(updateData)
-      .eq('id', id);
+    const { error } =
+      await s
+        .from('reservations')
+        .update(updateData)
+        .eq('id', id);
 
     if (error) {
       setError(error.message);
@@ -185,7 +311,9 @@ export default function Admin() {
         'Status updated. Google Sheets and customer email will update automatically.'
       );
     } else {
-      setToast('Status updated.');
+      setToast(
+        'Status updated.'
+      );
     }
 
     await load();
@@ -194,69 +322,137 @@ export default function Admin() {
   }
 
   /*
-   * ==========================================
+   * ============================================================
    * MARK PAYMENT AS PAID
-   * ==========================================
+   * ============================================================
    *
-   * This is the new payment function.
+   * IMPORTANT:
    *
-   * It updates:
+   * We DO NOT depend on payment_status / paid_at columns
+   * existing in Supabase.
    *
-   * payment_status = Paid
-   * paid_at = current time
-   * payment_updated_at = current time
+   * Your reservations table already has:
    *
-   * Your Supabase UPDATE webhook will then send
-   * the updated reservation to Google Apps Script.
+   * room_total
+   * deposit
+   * balance
+   *
+   * Therefore:
+   *
+   * deposit = room_total
+   * balance = 0
+   *
+   * This causes the Apps Script webhook to detect:
+   *
+   * old deposit -> new deposit
+   * old balance -> new balance
+   *
+   * and update Google Sheets.
    */
-  async function markPaymentPaid(id: string) {
-    setBusy(`payment-${id}`);
+
+  async function markPaymentPaid(
+    id: string
+  ) {
+    setBusy(
+      `payment-${id}`
+    );
+
     setError('');
     setToast('');
 
-    const now = new Date().toISOString();
+    const reservation =
+      rows.find(
+        (r) => r.id === id
+      );
 
-    const { error } = await s
-      .from('reservations')
-      .update({
-        payment_status: 'Paid',
-        paid_at: now,
-        payment_updated_at: now,
-      })
-      .eq('id', id);
+    if (!reservation) {
+      setError(
+        'Reservation not found.'
+      );
 
-    if (error) {
-      setError(error.message);
+      setBusy(null);
+      return;
+    }
+
+    const roomTotal =
+      Number(
+        reservation.room_total || 0
+      );
+
+    if (roomTotal <= 0) {
+      setError(
+        'Room total is zero or missing. Payment cannot be marked as paid.'
+      );
+
       setBusy(null);
       return;
     }
 
     /*
-     * Update the screen immediately.
-     *
-     * This makes the button disappear without waiting
-     * for another database reload.
+     * FULL PAYMENT
      */
-    setRows((current) =>
-      current.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              payment_status: 'Paid',
-              paid_at: now,
-              payment_updated_at: now,
-            }
-          : r
-      )
+    const newDeposit =
+      roomTotal;
+
+    const newBalance =
+      0;
+
+    /*
+     * UPDATE SUPABASE
+     */
+    const { data, error } =
+      await s
+        .from('reservations')
+        .update({
+          deposit: newDeposit,
+          balance: newBalance,
+        })
+        .eq('id', id)
+        .select(
+          '*, room:rooms(*)'
+        )
+        .single();
+
+    if (error) {
+      setError(
+        error.message
+      );
+
+      setBusy(null);
+      return;
+    }
+
+    /*
+     * UPDATE SCREEN IMMEDIATELY
+     */
+    setRows(
+      (current) =>
+        current.map(
+          (r) =>
+            r.id === id
+              ? {
+                  ...r,
+                  ...(data as R),
+                  deposit:
+                    newDeposit,
+                  balance:
+                    newBalance,
+                }
+              : r
+        )
     );
 
     setToast(
-      'Payment marked as PAID. Google Sheets and payment email will update automatically.'
+      `Payment marked as PAID. Deposit: ₱${newDeposit.toLocaleString(
+        'en-PH'
+      )} | Balance: ₱0`
     );
 
     /*
-     * Reload from Supabase so the screen is guaranteed
-     * to contain the database value.
+     * RELOAD FROM SUPABASE
+     *
+     * This confirms that the database contains
+     * the updated values.
      */
     await load();
 
@@ -264,34 +460,66 @@ export default function Admin() {
   }
 
   /*
+   * ============================================================
    * MARK PAYMENT UNPAID
+   * ============================================================
    *
-   * Optional safety feature.
+   * Restores the payment to unpaid:
    *
-   * This allows staff to undo a payment accidentally
-   * marked as paid.
+   * deposit = 0
+   * balance = room_total
    */
-  async function markPaymentUnpaid(id: string) {
-    setBusy(`payment-${id}`);
+
+  async function markPaymentUnpaid(
+    id: string
+  ) {
+    setBusy(
+      `payment-${id}`
+    );
+
     setError('');
     setToast('');
 
-    const { error } = await s
-      .from('reservations')
-      .update({
-        payment_status: 'Unpaid',
-        paid_at: null,
-        payment_updated_at: new Date().toISOString(),
-      })
-      .eq('id', id);
+    const reservation =
+      rows.find(
+        (r) => r.id === id
+      );
 
-    if (error) {
-      setError(error.message);
+    if (!reservation) {
+      setError(
+        'Reservation not found.'
+      );
+
       setBusy(null);
       return;
     }
 
-    setToast('Payment changed back to UNPAID.');
+    const roomTotal =
+      Number(
+        reservation.room_total || 0
+      );
+
+    const { error } =
+      await s
+        .from('reservations')
+        .update({
+          deposit: 0,
+          balance: roomTotal,
+        })
+        .eq('id', id);
+
+    if (error) {
+      setError(
+        error.message
+      );
+
+      setBusy(null);
+      return;
+    }
+
+    setToast(
+      'Payment changed back to UNPAID.'
+    );
 
     await load();
 
@@ -299,120 +527,204 @@ export default function Admin() {
   }
 
   /*
-   * GCash QR UPLOAD
+   * ============================================================
+   * GCASH QR UPLOAD
+   * ============================================================
    */
-  async function upload(e: any) {
-    const file = e.target.files?.[0];
+
+  async function upload(
+    e: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file =
+      e.target.files?.[0];
 
     if (!file) return;
 
     setBusy('qr');
     setError('');
+    setToast('');
 
     const extension =
-      file.name.split('.').pop() || 'png';
+      file.name
+        .split('.')
+        .pop() ||
+      'png';
 
     const path =
       `gcash/qr-${Date.now()}.${extension}`;
 
-    const { error } = await s.storage
-      .from('payment-proofs')
-      .upload(path, file, {
-        upsert: true,
-      });
+    const { error } =
+      await s.storage
+        .from('payment-proofs')
+        .upload(
+          path,
+          file,
+          {
+            upsert: true,
+          }
+        );
 
     if (error) {
-      setError(error.message);
+      setError(
+        error.message
+      );
+
       setBusy(null);
       return;
     }
 
-    const { data } = s.storage
-      .from('payment-proofs')
-      .getPublicUrl(path);
+    const { data } =
+      s.storage
+        .from('payment-proofs')
+        .getPublicUrl(
+          path
+        );
 
-    const { error: settingsError } =
+    const {
+      error: settingsError,
+    } =
       await s
         .from('settings')
-        .upsert({
-          key: 'gcash_qr_url',
-          value: data.publicUrl,
-        });
+        .upsert(
+          {
+            key: 'gcash_qr_url',
+            value:
+              data.publicUrl,
+          },
+          {
+            onConflict:
+              'key',
+          }
+        );
 
     if (settingsError) {
-      setError(settingsError.message);
+      setError(
+        settingsError.message
+      );
     } else {
-      setQr(data.publicUrl);
-      setToast('GCash QR updated.');
+      setQr(
+        data.publicUrl
+      );
+
+      setToast(
+        'GCash QR updated.'
+      );
     }
 
     setBusy(null);
   }
 
   /*
+   * ============================================================
    * STATS
+   * ============================================================
    */
+
   const counts = {
-    pending: rows.filter(
-      (r) => r.status === 'Pending'
-    ).length,
+    pending:
+      rows.filter(
+        (r) =>
+          r.status ===
+          'Pending'
+      ).length,
 
-    confirmed: rows.filter(
-      (r) => r.status === 'Confirmed'
-    ).length,
+    confirmed:
+      rows.filter(
+        (r) =>
+          r.status ===
+          'Confirmed'
+      ).length,
 
-    occupied: rows.filter(
-      (r) => r.status === 'Checked-in'
-    ).length,
+    occupied:
+      rows.filter(
+        (r) =>
+          r.status ===
+          'Checked-in'
+      ).length,
 
-    arrivals: rows.filter(
-      (r) =>
-        r.check_in === today() &&
-        ['Confirmed', 'Pending'].includes(r.status)
-    ).length,
+    arrivals:
+      rows.filter(
+        (r) =>
+          r.check_in ===
+            today() &&
+          [
+            'Confirmed',
+            'Pending',
+          ].includes(
+            r.status
+          )
+      ).length,
 
-    paid: rows.filter(
-      (r) =>
-        String(r.payment_status || '').toLowerCase() ===
-        'paid'
-    ).length,
+    paid:
+      rows.filter(
+        (r) =>
+          isReservationPaid(r)
+      ).length,
 
-    unpaid: rows.filter(
-      (r) =>
-        String(r.payment_status || '').toLowerCase() !==
-        'paid'
-    ).length,
+    unpaid:
+      rows.filter(
+        (r) =>
+          !isReservationPaid(r)
+      ).length,
   };
 
   /*
+   * ============================================================
    * FILTER
+   * ============================================================
    */
+
   const filtered =
     filter === 'All'
       ? rows
-      : rows.filter((r) => r.status === filter);
+      : rows.filter(
+          (r) =>
+            r.status ===
+            filter
+        );
 
   /*
+   * ============================================================
    * CALENDAR
+   * ============================================================
    */
-  const monthDates = useMemo(() => {
-    const [y, m] = month.split('-').map(Number);
 
-    const days =
-      new Date(y, m, 0).getDate();
+  const monthDates =
+    useMemo(() => {
+      const [
+        y,
+        m,
+      ] =
+        month
+          .split('-')
+          .map(Number);
 
-    const first =
-      new Date(y, m - 1, 1).getDay();
+      const days =
+        new Date(
+          y,
+          m,
+          0
+        ).getDate();
 
-    return {
-      days,
-      first,
-    };
-  }, [month]);
+      const first =
+        new Date(
+          y,
+          m - 1,
+          1
+        ).getDay();
+
+      return {
+        days,
+        first,
+      };
+    }, [month]);
 
   /*
+   * ============================================================
    * LOADING
+   * ============================================================
    */
+
   if (loading) {
     return (
       <div className="login-shell">
@@ -424,8 +736,11 @@ export default function Admin() {
   }
 
   /*
+   * ============================================================
    * LOGIN
+   * ============================================================
    */
+
   if (!user) {
     return (
       <div className="login-shell">
@@ -445,8 +760,10 @@ export default function Admin() {
           </h1>
 
           <p className="muted">
-            Sign in to manage reservations,
-            rooms, guest arrivals and checkout.
+            Sign in to manage
+            reservations, rooms,
+            guest arrivals and
+            checkout.
           </p>
 
           <form
@@ -455,6 +772,7 @@ export default function Admin() {
           >
 
             <div className="field">
+
               <label>
                 Staff email
               </label>
@@ -464,13 +782,17 @@ export default function Admin() {
                 required
                 value={email}
                 onChange={(e) =>
-                  setEmail(e.target.value)
+                  setEmail(
+                    e.target.value
+                  )
                 }
                 placeholder="staff@sakuraanandaresort.com"
               />
+
             </div>
 
             <div className="field">
+
               <label>
                 Password
               </label>
@@ -480,9 +802,12 @@ export default function Admin() {
                 required
                 value={password}
                 onChange={(e) =>
-                  setPassword(e.target.value)
+                  setPassword(
+                    e.target.value
+                  )
                 }
               />
+
             </div>
 
             {error && (
@@ -504,14 +829,15 @@ export default function Admin() {
   }
 
   /*
+   * ============================================================
    * DASHBOARD
+   * ============================================================
    */
+
   return (
     <div className="dashboard">
 
-      {/* ============================= */}
       {/* TOP */}
-      {/* ============================= */}
 
       <div className="dash-top">
 
@@ -526,7 +852,8 @@ export default function Admin() {
           </h1>
 
           <div className="muted">
-            A calm front desk, at a glance.
+            A calm front desk,
+            at a glance.
           </div>
 
         </div>
@@ -542,14 +869,14 @@ export default function Admin() {
 
       </div>
 
-      {/* ============================= */}
       {/* NOTICES */}
-      {/* ============================= */}
 
       {toast && (
         <div
           className="notice success"
-          style={{ marginBottom: 16 }}
+          style={{
+            marginBottom: 16,
+          }}
         >
           {toast}
         </div>
@@ -558,15 +885,15 @@ export default function Admin() {
       {error && (
         <div
           className="notice error"
-          style={{ marginBottom: 16 }}
+          style={{
+            marginBottom: 16,
+          }}
         >
           {error}
         </div>
       )}
 
-      {/* ============================= */}
       {/* STATS */}
-      {/* ============================= */}
 
       <div className="stats">
 
@@ -626,13 +953,12 @@ export default function Admin() {
 
       </div>
 
-      {/* ============================= */}
       {/* ROOMS */}
-      {/* ============================= */}
 
       <div className="section-title">
 
         <div>
+
           <div className="eyebrow">
             Rooms
           </div>
@@ -640,94 +966,127 @@ export default function Admin() {
           <h2>
             Occupancy
           </h2>
+
         </div>
 
       </div>
 
       <div className="occupancy-grid">
 
-        {rooms.map((room) => {
+        {rooms.map(
+          (room) => {
 
-          const active =
-            rows.find(
-              (r) =>
-                r.room_id === room.id &&
-                r.status === 'Checked-in'
-            );
+            const active =
+              rows.find(
+                (r) =>
+                  r.room_id ===
+                    room.id &&
+                  r.status ===
+                    'Checked-in'
+              );
 
-          const upcoming =
-            rows.find(
-              (r) =>
-                r.room_id === room.id &&
-                r.status === 'Confirmed' &&
-                r.check_in >= today()
-            );
+            const upcoming =
+              rows.find(
+                (r) =>
+                  r.room_id ===
+                    room.id &&
+                  r.status ===
+                    'Confirmed' &&
+                  r.check_in >=
+                    today()
+              );
 
-          return (
-            <div
-              className="card room-status"
-              key={room.id}
-            >
-
-              <span
-                className={`pill ${
-                  active
-                    ? 'danger'
-                    : 'success'
-                }`}
+            return (
+              <div
+                className="card room-status"
+                key={room.id}
               >
-                {active
-                  ? 'Occupied'
-                  : 'Available'}
-              </span>
 
-              <h3>
-                {room.name}
-              </h3>
+                <span
+                  className={`pill ${
+                    active
+                      ? 'danger'
+                      : 'success'
+                  }`}
+                >
+                  {active
+                    ? 'Occupied'
+                    : 'Available'}
+                </span>
 
-              <div className="muted">
-                ₱
-                {Number(room.rate).toLocaleString()}
-                {' '} / night
+                <h3>
+                  {room.name}
+                </h3>
+
+                <div className="muted">
+                  ₱
+                  {Number(
+                    room.rate
+                  ).toLocaleString()}
+                  {' '}
+                  / night
+                </div>
+
+                {active ? (
+                  <p
+                    style={{
+                      fontSize: 12,
+                    }}
+                  >
+                    Guest:{' '}
+                    <b>
+                      {
+                        active.guest_name
+                      }
+                    </b>
+                    <br />
+                    Until{' '}
+                    {
+                      active.check_out
+                    }
+                  </p>
+                ) : upcoming ? (
+                  <p
+                    style={{
+                      fontSize: 12,
+                    }}
+                  >
+                    Next arrival:{' '}
+                    <b>
+                      {
+                        upcoming.check_in
+                      }
+                    </b>
+                    <br />
+                    {
+                      upcoming.guest_name
+                    }
+                  </p>
+                ) : (
+                  <p
+                    style={{
+                      fontSize: 12,
+                    }}
+                  >
+                    Ready for a
+                    new stay.
+                  </p>
+                )}
+
               </div>
-
-              {active ? (
-                <p style={{ fontSize: 12 }}>
-                  Guest:{' '}
-                  <b>
-                    {active.guest_name}
-                  </b>
-                  <br />
-                  Until {active.check_out}
-                </p>
-              ) : upcoming ? (
-                <p style={{ fontSize: 12 }}>
-                  Next arrival:{' '}
-                  <b>
-                    {upcoming.check_in}
-                  </b>
-                  <br />
-                  {upcoming.guest_name}
-                </p>
-              ) : (
-                <p style={{ fontSize: 12 }}>
-                  Ready for a new stay.
-                </p>
-              )}
-
-            </div>
-          );
-        })}
+            );
+          }
+        )}
 
       </div>
 
-      {/* ============================= */}
       {/* CALENDAR */}
-      {/* ============================= */}
 
       <div
         className="section-title"
-        style={{ marginTop: 42 }}
+        style={{
+          marginTop: 42,
+        }}
       >
 
         <div>
@@ -746,7 +1105,9 @@ export default function Admin() {
           type="month"
           value={month}
           onChange={(e) =>
-            setMonth(e.target.value)
+            setMonth(
+              e.target.value
+            )
           }
         />
 
@@ -764,14 +1125,16 @@ export default function Admin() {
             'Thu',
             'Fri',
             'Sat',
-          ].map((x) => (
-            <div
-              className="calendar-head"
-              key={x}
-            >
-              {x}
-            </div>
-          ))}
+          ].map(
+            (x) => (
+              <div
+                className="calendar-head"
+                key={x}
+              >
+                {x}
+              </div>
+            )
+          )}
 
           {Array.from(
             {
@@ -782,7 +1145,8 @@ export default function Admin() {
             (_, i) => {
 
               if (
-                i < monthDates.first
+                i <
+                monthDates.first
               ) {
                 return (
                   <div
@@ -798,7 +1162,9 @@ export default function Admin() {
                 1;
 
               const ds =
-                `${month}-${String(d).padStart(
+                `${month}-${String(
+                  d
+                ).padStart(
                   2,
                   '0'
                 )}`;
@@ -813,48 +1179,54 @@ export default function Admin() {
                     {d}
                   </div>
 
-                  {rooms.map((room) => {
+                  {rooms.map(
+                    (room) => {
 
-                    const booked =
-                      rows.some(
-                        (r) =>
-                          r.room_id ===
-                            room.id &&
-                          [
-                            'Pending',
-                            'Confirmed',
-                            'Checked-in',
-                          ].includes(
-                            r.status
-                          ) &&
-                          r.check_in <= ds &&
-                          r.check_out > ds
-                      );
+                      const booked =
+                        rows.some(
+                          (r) =>
+                            r.room_id ===
+                              room.id &&
+                            [
+                              'Pending',
+                              'Confirmed',
+                              'Checked-in',
+                            ].includes(
+                              r.status
+                            ) &&
+                            r.check_in <=
+                              ds &&
+                            r.check_out >
+                              ds
+                        );
 
-                    return (
-                      <div
-                        className="room-dot"
-                        key={room.id}
-                      >
-
-                        <i
-                          className={
-                            booked
-                              ? 'booked'
-                              : ''
+                      return (
+                        <div
+                          className="room-dot"
+                          key={
+                            room.id
                           }
-                        />
+                        >
 
-                        <span>
-                          {room.name.replace(
-                            'Room ',
-                            'R'
-                          )}
-                        </span>
+                          <i
+                            className={
+                              booked
+                                ? 'booked'
+                                : ''
+                            }
+                          />
 
-                      </div>
-                    );
-                  })}
+                          <span>
+                            {room.name.replace(
+                              'Room ',
+                              'R'
+                            )}
+                          </span>
+
+                        </div>
+                      );
+                    }
+                  )}
 
                 </div>
               );
@@ -865,13 +1237,13 @@ export default function Admin() {
 
       </div>
 
-      {/* ============================= */}
       {/* GCASH */}
-      {/* ============================= */}
 
       <div
         className="section-title"
-        style={{ marginTop: 42 }}
+        style={{
+          marginTop: 42,
+        }}
       >
 
         <div>
@@ -895,15 +1267,19 @@ export default function Admin() {
           <div>
 
             <p className="muted">
-              Upload the current GCash QR.
-              Guests see it on the reservation page.
+              Upload the current
+              GCash QR. Guests see
+              it on the reservation
+              page.
             </p>
 
             <input
               type="file"
               accept="image/*"
               onChange={upload}
-              disabled={busy === 'qr'}
+              disabled={
+                busy === 'qr'
+              }
             />
 
             {qr && (
@@ -912,13 +1288,11 @@ export default function Admin() {
                   marginTop: 16,
                 }}
               >
-
                 <img
                   className="qr"
                   src={qr}
                   alt="Current GCash QR"
                 />
-
               </div>
             )}
 
@@ -927,13 +1301,16 @@ export default function Admin() {
           <div className="notice">
 
             <b>
-              Email & SMS notifications
+              Email & SMS
+              notifications
             </b>
 
             <p>
-              Reservation emails are sent
-              automatically by Google Sheets +
-              Apps Script using your Google account.
+              Reservation emails
+              are sent automatically
+              by Google Sheets +
+              Apps Script using
+              your Google account.
             </p>
 
           </div>
@@ -942,13 +1319,13 @@ export default function Admin() {
 
       </div>
 
-      {/* ============================= */}
       {/* RESERVATIONS */}
-      {/* ============================= */}
 
       <div
         className="section-title"
-        style={{ marginTop: 42 }}
+        style={{
+          marginTop: 42,
+        }}
       >
 
         <div>
@@ -966,7 +1343,9 @@ export default function Admin() {
         <select
           value={filter}
           onChange={(e) =>
-            setFilter(e.target.value)
+            setFilter(
+              e.target.value
+            )
           }
         >
 
@@ -998,9 +1377,7 @@ export default function Admin() {
 
       </div>
 
-      {/* ============================= */}
-      {/* RESERVATION TABLE */}
-      {/* ============================= */}
+      {/* TABLE */}
 
       <div className="table-wrap">
 
@@ -1044,295 +1421,318 @@ export default function Admin() {
 
           <tbody>
 
-            {filtered.map((r) => {
+            {filtered.map(
+              (r) => {
 
-              const isPaid =
-                String(
-                  r.payment_status || ''
-                ).toLowerCase() ===
-                'paid';
+                const isPaid =
+                  isReservationPaid(
+                    r
+                  );
 
-              const paymentBusy =
-                busy ===
-                `payment-${r.id}`;
+                const paymentBusy =
+                  busy ===
+                  `payment-${r.id}`;
 
-              return (
+                const status =
+                  paymentStatus(
+                    r
+                  );
 
-                <tr key={r.id}>
+                return (
+                  <tr
+                    key={r.id}
+                  >
 
-                  {/* BOOKING */}
+                    {/* BOOKING */}
 
-                  <td>
+                    <td>
 
-                    <b>
-                      {r.booking_id}
-                    </b>
+                      <b>
+                        {
+                          r.booking_id
+                        }
+                      </b>
 
-                    <br />
+                      <br />
 
-                    <span className="muted">
-                      {new Date(
-                        r.created_at
-                      ).toLocaleDateString(
-                        'en-PH'
-                      )}
-                    </span>
+                      <span className="muted">
+                        {new Date(
+                          r.created_at
+                        ).toLocaleDateString(
+                          'en-PH'
+                        )}
+                      </span>
 
-                  </td>
+                    </td>
 
-                  {/* GUEST */}
+                    {/* GUEST */}
 
-                  <td>
+                    <td>
 
-                    <b>
-                      {r.guest_name}
-                    </b>
+                      <b>
+                        {
+                          r.guest_name
+                        }
+                      </b>
 
-                    <br />
+                      <br />
 
-                    <span className="muted">
-                      {r.mobile}
-                    </span>
+                      <span className="muted">
+                        {r.mobile}
+                      </span>
 
-                    <br />
+                      <br />
 
-                    <span className="muted">
-                      {r.email ||
-                        'No email'}
-                    </span>
+                      <span className="muted">
+                        {r.email ||
+                          'No email'}
+                      </span>
 
-                  </td>
+                    </td>
 
-                  {/* STAY */}
+                    {/* STAY */}
 
-                  <td>
+                    <td>
 
-                    {r.check_in}
+                      {
+                        r.check_in
+                      }
 
-                    <br />
+                      <br />
 
-                    →
-
-                    {' '}
-
-                    {r.check_out}
-
-                    <br />
-
-                    <span className="muted">
-
-                      {r.guests}
+                      →
 
                       {' '}
 
-                      guest
+                      {
+                        r.check_out
+                      }
 
-                      {r.guests !== 1
-                        ? 's'
-                        : ''}
+                      <br />
 
-                    </span>
+                      <span className="muted">
+                        {r.guests}{' '}
+                        guest
+                        {Number(
+                          r.guests
+                        ) !== 1
+                          ? 's'
+                          : ''}
+                      </span>
 
-                  </td>
+                    </td>
 
-                  {/* ROOM */}
+                    {/* ROOM */}
 
-                  <td>
+                    <td>
 
-                    <b>
-                      {r.room?.name ||
-                        'Room unavailable'}
-                    </b>
+                      <b>
+                        {r.room?.name ||
+                          'Room unavailable'}
+                      </b>
 
-                    <br />
+                      <br />
 
-                    <span className="muted">
-                      ₱
+                      <span className="muted">
+                        ₱
+                        {Number(
+                          r.rate_per_night
+                        ).toLocaleString(
+                          'en-PH'
+                        )}
+                        /night
+                      </span>
+
+                    </td>
+
+                    {/* PAYMENT */}
+
+                    <td>
+
+                      <b>
+                        ₱
+                        {Number(
+                          r.room_total
+                        ).toLocaleString(
+                          'en-PH'
+                        )}
+                      </b>
+
+                      <br />
+
+                      Deposit ₱
                       {Number(
-                        r.rate_per_night
-                      ).toLocaleString()}
-                      /night
-                    </span>
+                        r.deposit
+                      ).toLocaleString(
+                        'en-PH'
+                      )}
 
-                  </td>
+                      <br />
 
-                  {/* ===================== */}
-                  {/* PAYMENT */}
-                  {/* ===================== */}
-
-                  <td>
-
-                    <b>
-                      ₱
+                      Balance ₱
                       {Number(
-                        r.room_total
-                      ).toLocaleString()}
-                    </b>
+                        r.balance
+                      ).toLocaleString(
+                        'en-PH'
+                      )}
 
-                    <br />
+                      <br />
 
-                    Deposit ₱
-                    {Number(
-                      r.deposit
-                    ).toLocaleString()}
+                      <span
+                        className={`pill ${
+                          isPaid
+                            ? 'success'
+                            : Number(
+                                r.deposit ||
+                                  0
+                              ) > 0
+                            ? 'warn'
+                            : 'danger'
+                        }`}
+                        style={{
+                          marginTop: 6,
+                          display:
+                            'inline-block',
+                        }}
+                      >
+                        {status}
+                      </span>
 
-                    <br />
+                      <br />
 
-                    Balance ₱
-                    {Number(
-                      r.balance
-                    ).toLocaleString()}
+                      <span className="muted">
+                        {r.payment_method ||
+                          'Not specified'}
+                      </span>
 
-                    <br />
+                      <div
+                        style={{
+                          marginTop: 8,
+                        }}
+                      >
 
-                    <span className="muted">
-                      {r.payment_method ||
-                        'Not specified'}
-                    </span>
+                        {isPaid ? (
 
-                    <div
-                      style={{
-                        marginTop: 8,
-                      }}
-                    >
+                          <div>
 
-                      {isPaid ? (
-
-                        /*
-                         * =================================
-                         * PAID
-                         * =================================
-                         *
-                         * MARK AS PAID BUTTON IS COMPLETELY
-                         * HIDDEN WHEN PAYMENT IS ALREADY PAID.
-                         */
-
-                        <div>
-
-                          <span
-                            className="pill success"
-                          >
-                            ✓ PAID
-                          </span>
-
-                          {r.paid_at && (
-                            <div
-                              className="muted"
-                              style={{
-                                fontSize: 11,
-                                marginTop: 5,
-                              }}
+                            <span
+                              className="pill success"
                             >
-                              Paid{' '}
-                              {new Date(
-                                r.paid_at
-                              ).toLocaleString(
-                                'en-PH'
-                              )}
-                            </div>
-                          )}
+                              ✓ PAID
+                            </span>
 
-                          {/*
-                           * OPTIONAL UNDO BUTTON
-                           *
-                           * Remove this section if you don't
-                           * want staff to reverse a payment.
-                           */}
+                            <button
+                              className="btn secondary"
+                              style={{
+                                marginTop: 7,
+                                fontSize: 11,
+                                padding:
+                                  '5px 8px',
+                              }}
+                              disabled={
+                                paymentBusy
+                              }
+                              onClick={() =>
+                                markPaymentUnpaid(
+                                  r.id
+                                )
+                              }
+                            >
+                              {paymentBusy
+                                ? 'Updating...'
+                                : 'Undo Paid'}
+                            </button>
+
+                          </div>
+
+                        ) : (
 
                           <button
-                            className="btn secondary"
-                            style={{
-                              marginTop: 7,
-                              fontSize: 11,
-                              padding:
-                                '5px 8px',
-                            }}
+                            className="btn green"
                             disabled={
                               paymentBusy
                             }
                             onClick={() =>
-                              markPaymentUnpaid(
+                              markPaymentPaid(
                                 r.id
                               )
                             }
                           >
-                            Undo Paid
+                            {paymentBusy
+                              ? 'Updating...'
+                              : 'Mark as Paid'}
                           </button>
 
-                        </div>
+                        )}
 
-                      ) : (
+                      </div>
 
-                        /*
-                         * =================================
-                         * UNPAID
-                         * =================================
-                         */
+                    </td>
 
-                        <button
-                          className="btn green"
-                          disabled={
-                            paymentBusy
-                          }
-                          onClick={() =>
-                            markPaymentPaid(
-                              r.id
-                            )
-                          }
-                        >
-                          {paymentBusy
-                            ? 'Updating...'
-                            : 'Mark as Paid'}
-                        </button>
+                    {/* STATUS */}
 
-                      )}
+                    <td>
 
-                    </div>
+                      <span
+                        className={`pill ${statusClass(
+                          r.status
+                        )}`}
+                      >
+                        {r.status}
+                      </span>
 
-                  </td>
+                    </td>
 
-                  {/* STATUS */}
+                    {/* ACTIONS */}
 
-                  <td>
+                    <td>
 
-                    <span
-                      className={`pill ${statusClass(
-                        r.status
-                      )}`}
-                    >
-                      {r.status}
-                    </span>
+                      <div className="actions">
 
-                  </td>
+                        {r.status ===
+                          'Pending' && (
+                          <>
+                            <button
+                              className="btn green"
+                              disabled={
+                                busy ===
+                                r.id
+                              }
+                              onClick={() =>
+                                action(
+                                  r.id,
+                                  'Confirmed'
+                                )
+                              }
+                            >
+                              Confirm
+                            </button>
 
-                  {/* ACTIONS */}
+                            <button
+                              className="btn red"
+                              disabled={
+                                busy ===
+                                r.id
+                              }
+                              onClick={() =>
+                                action(
+                                  r.id,
+                                  'Cancelled'
+                                )
+                              }
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
 
-                  <td>
-
-                    <div className="actions">
-
-                      {r.status ===
-                        'Pending' && (
-                        <>
-                          <button
-                            className="btn green"
-                            disabled={
-                              busy === r.id
-                            }
-                            onClick={() =>
-                              action(
-                                r.id,
-                                'Confirmed'
-                              )
-                            }
-                          >
-                            Confirm
-                          </button>
-
+                        {r.status ===
+                          'Confirmed' && (
                           <button
                             className="btn red"
                             disabled={
-                              busy === r.id
+                              busy ===
+                              r.id
                             }
                             onClick={() =>
                               action(
@@ -1343,53 +1743,35 @@ export default function Admin() {
                           >
                             Cancel
                           </button>
-                        </>
-                      )}
+                        )}
 
-                      {r.status ===
-                        'Confirmed' && (
-                        <button
-                          className="btn red"
-                          disabled={
-                            busy === r.id
-                          }
-                          onClick={() =>
-                            action(
-                              r.id,
-                              'Cancelled'
-                            )
-                          }
-                        >
-                          Cancel
-                        </button>
-                      )}
+                        {r.status ===
+                          'Checked-in' && (
+                          <button
+                            className="btn secondary"
+                            disabled={
+                              busy ===
+                              r.id
+                            }
+                            onClick={() =>
+                              action(
+                                r.id,
+                                'Checked-out'
+                              )
+                            }
+                          >
+                            Checkout
+                          </button>
+                        )}
 
-                      {r.status ===
-                        'Checked-in' && (
-                        <button
-                          className="btn secondary"
-                          disabled={
-                            busy === r.id
-                          }
-                          onClick={() =>
-                            action(
-                              r.id,
-                              'Checked-out'
-                            )
-                          }
-                        >
-                          Checkout
-                        </button>
-                      )}
+                      </div>
 
-                    </div>
+                    </td>
 
-                  </td>
-
-                </tr>
-
-              );
-            })}
+                  </tr>
+                );
+              }
+            )}
 
           </tbody>
 

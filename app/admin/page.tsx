@@ -8,6 +8,24 @@ type R = Reservation & {
   room?: Room;
 };
 
+type EditForm = {
+  guest_name: string;
+  mobile: string;
+  email: string;
+  check_in: string;
+  check_out: string;
+  guests: number;
+  room_id: string;
+  rate_per_night: number;
+  room_total: number;
+  deposit: number;
+  balance: number;
+  payment_method: string;
+  payment_ref: string;
+  special_requests: string;
+  status: string;
+};
+
 const statusClass = (s: string) =>
   s === 'Confirmed' || s === 'Checked-in'
     ? 'success'
@@ -68,7 +86,7 @@ function paymentStatus(r: R) {
 
 /*
  * ============================================================
- * ADMIN PAGE
+ * ADMIN
  * ============================================================
  */
 
@@ -96,7 +114,36 @@ export default function Admin() {
 
   const [filter, setFilter] = useState('All');
 
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] =
+    useState<string | null>(null);
+
+  /*
+   * ============================================================
+   * EDIT MODAL
+   * ============================================================
+   */
+
+  const [editingReservation, setEditingReservation] =
+    useState<R | null>(null);
+
+  const [editForm, setEditForm] =
+    useState<EditForm>({
+      guest_name: '',
+      mobile: '',
+      email: '',
+      check_in: '',
+      check_out: '',
+      guests: 1,
+      room_id: '',
+      rate_per_night: 0,
+      room_total: 0,
+      deposit: 0,
+      balance: 0,
+      payment_method: 'GCash',
+      payment_ref: '',
+      special_requests: '',
+      status: 'Pending',
+    });
 
   /*
    * ============================================================
@@ -126,11 +173,14 @@ export default function Admin() {
 
     const {
       data: sub,
-    } = s.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user || null);
-      }
-    );
+    } =
+      s.auth.onAuthStateChange(
+        (_event, session) => {
+          setUser(
+            session?.user || null
+          );
+        }
+      );
 
     return () => {
       mounted = false;
@@ -167,26 +217,6 @@ export default function Admin() {
    * ============================================================
    * LOAD DATA
    * ============================================================
-   *
-   * IMPORTANT:
-   *
-   * reservations.room_id
-   *        ↓
-   * rooms.id
-   *        ↓
-   * rooms.name
-   *
-   * The room relationship is loaded here:
-   *
-   * room:rooms(*)
-   *
-   * This allows the dashboard to display:
-   *
-   * Room 1
-   *
-   * instead of:
-   *
-   * UUID
    */
 
   async function load() {
@@ -199,10 +229,15 @@ export default function Admin() {
     ] = await Promise.all([
       s
         .from('reservations')
-        .select('*, room:rooms(*)')
-        .order('check_in', {
-          ascending: true,
-        }),
+        .select(
+          '*, room:rooms(*)'
+        )
+        .order(
+          'check_in',
+          {
+            ascending: true,
+          }
+        ),
 
       s
         .from('rooms')
@@ -219,14 +254,18 @@ export default function Admin() {
         .maybeSingle(),
     ]);
 
-    if (reservationsResult.error) {
+    if (
+      reservationsResult.error
+    ) {
       setError(
         reservationsResult.error.message
       );
       return;
     }
 
-    if (roomsResult.error) {
+    if (
+      roomsResult.error
+    ) {
       setError(
         roomsResult.error.message
       );
@@ -234,15 +273,18 @@ export default function Admin() {
     }
 
     setRows(
-      (reservationsResult.data || []) as R[]
+      (reservationsResult.data ||
+        []) as R[]
     );
 
     setRooms(
-      (roomsResult.data || []) as Room[]
+      (roomsResult.data ||
+        []) as Room[]
     );
 
     setQr(
-      settingsResult.data?.value || ''
+      settingsResult.data?.value ||
+        ''
     );
   }
 
@@ -251,6 +293,503 @@ export default function Admin() {
       load();
     }
   }, [user]);
+
+  /*
+   * ============================================================
+   * OPEN EDIT
+   * ============================================================
+   */
+
+  function openEdit(r: R) {
+    setError('');
+    setToast('');
+
+    setEditingReservation(r);
+
+    setEditForm({
+      guest_name:
+        r.guest_name || '',
+
+      mobile:
+        r.mobile || '',
+
+      email:
+        r.email || '',
+
+      check_in:
+        r.check_in || '',
+
+      check_out:
+        r.check_out || '',
+
+      guests:
+        Number(r.guests || 1),
+
+      /*
+       * IMPORTANT:
+       *
+       * room_id remains the UUID.
+       *
+       * The dropdown displays room.name.
+       */
+      room_id:
+        r.room_id || '',
+
+      rate_per_night:
+        Number(
+          r.rate_per_night || 0
+        ),
+
+      room_total:
+        Number(
+          r.room_total || 0
+        ),
+
+      deposit:
+        Number(
+          r.deposit || 0
+        ),
+
+      balance:
+        Number(
+          r.balance || 0
+        ),
+
+      payment_method:
+        r.payment_method ||
+        'GCash',
+
+      payment_ref:
+        r.payment_ref || '',
+
+      special_requests:
+        r.special_requests || '',
+
+      status:
+        r.status || 'Pending',
+    });
+  }
+
+  /*
+   * ============================================================
+   * CLOSE EDIT
+   * ============================================================
+   */
+
+  function closeEdit() {
+    if (busy === 'edit') return;
+
+    setEditingReservation(null);
+  }
+
+  /*
+   * ============================================================
+   * CHANGE EDIT FIELD
+   * ============================================================
+   */
+
+  function updateEditField(
+    field: keyof EditForm,
+    value: string | number
+  ) {
+    setEditForm(
+      (current) => ({
+        ...current,
+        [field]: value,
+      })
+    );
+  }
+
+  /*
+   * ============================================================
+   * ROOM CHANGE
+   * ============================================================
+   *
+   * When staff chooses "Room 2":
+   *
+   * UI = Room 2
+   *
+   * Database =
+   * Room 2 UUID
+   */
+
+  function handleRoomChange(
+    roomId: string
+  ) {
+    const selectedRoom =
+      rooms.find(
+        (room) =>
+          room.id === roomId
+      );
+
+    setEditForm(
+      (current) => ({
+        ...current,
+
+        room_id: roomId,
+
+        rate_per_night:
+          selectedRoom
+            ? Number(
+                selectedRoom.rate || 0
+              )
+            : current.rate_per_night,
+      })
+    );
+  }
+
+  /*
+   * ============================================================
+   * RECALCULATE TOTAL
+   * ============================================================
+   */
+
+  function calculateEditTotal() {
+    const checkIn =
+      editForm.check_in;
+
+    const checkOut =
+      editForm.check_out;
+
+    const rate =
+      Number(
+        editForm.rate_per_night || 0
+      );
+
+    if (
+      !checkIn ||
+      !checkOut ||
+      rate <= 0
+    ) {
+      return Number(
+        editForm.room_total || 0
+      );
+    }
+
+    const start =
+      new Date(
+        `${checkIn}T00:00:00`
+      );
+
+    const end =
+      new Date(
+        `${checkOut}T00:00:00`
+      );
+
+    const diff =
+      end.getTime() -
+      start.getTime();
+
+    const nights =
+      Math.max(
+        0,
+        Math.ceil(
+          diff /
+            (1000 *
+              60 *
+              60 *
+              24)
+        )
+      );
+
+    return (
+      nights *
+      rate
+    );
+  }
+
+  /*
+   * ============================================================
+   * UPDATE RESERVATION
+   * ============================================================
+   */
+
+  async function updateReservation(
+    e: React.FormEvent
+  ) {
+    e.preventDefault();
+
+    if (!editingReservation) {
+      return;
+    }
+
+    setBusy('edit');
+    setError('');
+    setToast('');
+
+    /*
+     * VALIDATION
+     */
+
+    if (
+      !editForm.guest_name.trim()
+    ) {
+      setError(
+        'Guest name is required.'
+      );
+
+      setBusy(null);
+      return;
+    }
+
+    if (
+      !editForm.mobile.trim()
+    ) {
+      setError(
+        'Mobile number is required.'
+      );
+
+      setBusy(null);
+      return;
+    }
+
+    if (
+      !editForm.check_in ||
+      !editForm.check_out
+    ) {
+      setError(
+        'Check-in and check-out dates are required.'
+      );
+
+      setBusy(null);
+      return;
+    }
+
+    if (
+      editForm.check_out <=
+      editForm.check_in
+    ) {
+      setError(
+        'Check-out must be after check-in.'
+      );
+
+      setBusy(null);
+      return;
+    }
+
+    if (
+      !editForm.room_id
+    ) {
+      setError(
+        'Please select a room.'
+      );
+
+      setBusy(null);
+      return;
+    }
+
+    /*
+     * CALCULATE TOTAL
+     */
+
+    const calculatedTotal =
+      calculateEditTotal();
+
+    const deposit =
+      Number(
+        editForm.deposit || 0
+      );
+
+    const balance =
+      Math.max(
+        0,
+        calculatedTotal -
+          deposit
+      );
+
+    /*
+     * IMPORTANT:
+     *
+     * room_id is saved as UUID.
+     *
+     * The user never has to manually enter
+     * the UUID.
+     */
+
+    const updateData: any = {
+      guest_name:
+        editForm.guest_name.trim(),
+
+      mobile:
+        editForm.mobile.trim(),
+
+      email:
+        editForm.email.trim() ||
+        null,
+
+      check_in:
+        editForm.check_in,
+
+      check_out:
+        editForm.check_out,
+
+      guests:
+        Number(
+          editForm.guests || 1
+        ),
+
+      room_id:
+        editForm.room_id,
+
+      rate_per_night:
+        Number(
+          editForm.rate_per_night || 0
+        ),
+
+      room_total:
+        calculatedTotal,
+
+      deposit:
+        deposit,
+
+      balance:
+        balance,
+
+      payment_method:
+        editForm.payment_method ||
+        null,
+
+      payment_ref:
+        editForm.payment_ref.trim() ||
+        null,
+
+      special_requests:
+        editForm.special_requests.trim() ||
+        null,
+
+      status:
+        editForm.status,
+    };
+
+    if (
+      editForm.status ===
+      'Checked-out'
+    ) {
+      updateData.checked_out_at =
+        new Date().toISOString();
+    }
+
+    /*
+     * UPDATE SUPABASE
+     */
+
+    const {
+      data,
+      error,
+    } = await s
+      .from('reservations')
+      .update(updateData)
+      .eq(
+        'id',
+        editingReservation.id
+      )
+      .select(
+        '*, room:rooms(*)'
+      )
+      .single();
+
+    if (error) {
+      setError(
+        error.message
+      );
+
+      setBusy(null);
+      return;
+    }
+
+    /*
+     * UPDATE SCREEN
+     */
+
+    setRows(
+      (current) =>
+        current.map(
+          (r) =>
+            r.id ===
+            editingReservation.id
+              ? (data as R)
+              : r
+        )
+    );
+
+    setToast(
+      `Reservation ${editingReservation.booking_id} updated successfully.`
+    );
+
+    setEditingReservation(
+      null
+    );
+
+    /*
+     * Reload so the room relationship
+     * is guaranteed to be refreshed.
+     */
+
+    await load();
+
+    setBusy(null);
+  }
+
+  /*
+   * ============================================================
+   * DELETE RESERVATION
+   * ============================================================
+   */
+
+  async function deleteReservation(
+    r: R
+  ) {
+    const confirmed =
+      window.confirm(
+        `Delete reservation ${r.booking_id} for ${r.guest_name}?\n\nThis action cannot be undone.`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setBusy(
+      `delete-${r.id}`
+    );
+
+    setError('');
+    setToast('');
+
+    const {
+      error,
+    } = await s
+      .from('reservations')
+      .delete()
+      .eq(
+        'id',
+        r.id
+      );
+
+    if (error) {
+      setError(
+        error.message
+      );
+
+      setBusy(null);
+      return;
+    }
+
+    setRows(
+      (current) =>
+        current.filter(
+          (item) =>
+            item.id !== r.id
+        )
+    );
+
+    setToast(
+      `Reservation ${r.booking_id} deleted.`
+    );
+
+    setBusy(null);
+
+    await load();
+  }
 
   /*
    * ============================================================
@@ -270,43 +809,36 @@ export default function Admin() {
       status,
     };
 
-    if (status === 'Checked-out') {
+    if (
+      status ===
+      'Checked-out'
+    ) {
       updateData.checked_out_at =
         new Date().toISOString();
     }
 
-    const { error } =
-      await s
-        .from('reservations')
-        .update(updateData)
-        .eq('id', id);
+    const {
+      error,
+    } = await s
+      .from('reservations')
+      .update(updateData)
+      .eq(
+        'id',
+        id
+      );
 
     if (error) {
-      setError(error.message);
+      setError(
+        error.message
+      );
+
       setBusy(null);
       return;
     }
 
-    const event =
-      status === 'Confirmed'
-        ? 'confirmed'
-        : status === 'Cancelled'
-        ? 'cancelled'
-        : status === 'Checked-out'
-        ? 'checked-out'
-        : status === 'Checked-in'
-        ? 'checked-in'
-        : '';
-
-    if (event) {
-      setToast(
-        'Status updated. Google Sheets and customer email will update automatically.'
-      );
-    } else {
-      setToast(
-        'Status updated.'
-      );
-    }
+    setToast(
+      'Reservation status updated successfully.'
+    );
 
     await load();
 
@@ -322,14 +854,17 @@ export default function Admin() {
   async function markPaymentPaid(
     id: string
   ) {
-    setBusy(`payment-${id}`);
+    setBusy(
+      `payment-${id}`
+    );
 
     setError('');
     setToast('');
 
     const reservation =
       rows.find(
-        (r) => r.id === id
+        (r) =>
+          r.id === id
       );
 
     if (!reservation) {
@@ -343,61 +878,48 @@ export default function Admin() {
 
     const roomTotal =
       Number(
-        reservation.room_total || 0
+        reservation.room_total ||
+          0
       );
 
-    if (roomTotal <= 0) {
+    if (
+      roomTotal <= 0
+    ) {
       setError(
-        'Room total is zero or missing. Payment cannot be marked as paid.'
+        'Room total is zero or missing.'
       );
 
       setBusy(null);
       return;
     }
 
-    const newDeposit = roomTotal;
-    const newBalance = 0;
-
     const {
-      data,
       error,
     } = await s
       .from('reservations')
       .update({
-        deposit: newDeposit,
-        balance: newBalance,
+        deposit:
+          roomTotal,
+        balance: 0,
       })
-      .eq('id', id)
-      .select(
-        '*, room:rooms(*)'
-      )
-      .single();
+      .eq(
+        'id',
+        id
+      );
 
     if (error) {
-      setError(error.message);
+      setError(
+        error.message
+      );
+
       setBusy(null);
       return;
     }
 
-    setRows(
-      (current) =>
-        current.map(
-          (r) =>
-            r.id === id
-              ? {
-                  ...r,
-                  ...(data as R),
-                  deposit: newDeposit,
-                  balance: newBalance,
-                }
-              : r
-        )
-    );
-
     setToast(
-      `Payment marked as PAID. Deposit: ₱${newDeposit.toLocaleString(
+      `Payment marked as PAID. ₱${roomTotal.toLocaleString(
         'en-PH'
-      )} | Balance: ₱0`
+      )}`
     );
 
     await load();
@@ -414,14 +936,17 @@ export default function Admin() {
   async function markPaymentUnpaid(
     id: string
   ) {
-    setBusy(`payment-${id}`);
+    setBusy(
+      `payment-${id}`
+    );
 
     setError('');
     setToast('');
 
     const reservation =
       rows.find(
-        (r) => r.id === id
+        (r) =>
+          r.id === id
       );
 
     if (!reservation) {
@@ -435,20 +960,29 @@ export default function Admin() {
 
     const roomTotal =
       Number(
-        reservation.room_total || 0
+        reservation.room_total ||
+          0
       );
 
-    const { error } =
-      await s
-        .from('reservations')
-        .update({
-          deposit: 0,
-          balance: roomTotal,
-        })
-        .eq('id', id);
+    const {
+      error,
+    } = await s
+      .from('reservations')
+      .update({
+        deposit: 0,
+        balance:
+          roomTotal,
+      })
+      .eq(
+        'id',
+        id
+      );
 
     if (error) {
-      setError(error.message);
+      setError(
+        error.message
+      );
+
       setBusy(null);
       return;
     }
@@ -464,7 +998,7 @@ export default function Admin() {
 
   /*
    * ============================================================
-   * GCASH QR UPLOAD
+   * GCASH QR
    * ============================================================
    */
 
@@ -483,44 +1017,61 @@ export default function Admin() {
     const extension =
       file.name
         .split('.')
-        .pop() || 'png';
+        .pop() ||
+      'png';
 
     const path =
       `gcash/qr-${Date.now()}.${extension}`;
 
-    const { error } =
-      await s.storage
-        .from('payment-proofs')
-        .upload(
-          path,
-          file,
-          {
-            upsert: true,
-          }
-        );
+    const {
+      error,
+    } = await s.storage
+      .from(
+        'payment-proofs'
+      )
+      .upload(
+        path,
+        file,
+        {
+          upsert: true,
+        }
+      );
 
     if (error) {
-      setError(error.message);
+      setError(
+        error.message
+      );
+
       setBusy(null);
       return;
     }
 
-    const { data } =
+    const {
+      data,
+    } =
       s.storage
-        .from('payment-proofs')
-        .getPublicUrl(path);
+        .from(
+          'payment-proofs'
+        )
+        .getPublicUrl(
+          path
+        );
 
     const {
-      error: settingsError,
+      error:
+        settingsError,
     } = await s
       .from('settings')
       .upsert(
         {
-          key: 'gcash_qr_url',
-          value: data.publicUrl,
+          key:
+            'gcash_qr_url',
+          value:
+            data.publicUrl,
         },
         {
-          onConflict: 'key',
+          onConflict:
+            'key',
         }
       );
 
@@ -529,10 +1080,12 @@ export default function Admin() {
         settingsError.message
       );
     } else {
-      setQr(data.publicUrl);
+      setQr(
+        data.publicUrl
+      );
 
       setToast(
-        'GCash QR updated.'
+        'GCash QR updated successfully.'
       );
     }
 
@@ -549,41 +1102,48 @@ export default function Admin() {
     pending:
       rows.filter(
         (r) =>
-          r.status === 'Pending'
+          r.status ===
+          'Pending'
       ).length,
 
     confirmed:
       rows.filter(
         (r) =>
-          r.status === 'Confirmed'
+          r.status ===
+          'Confirmed'
       ).length,
 
     occupied:
       rows.filter(
         (r) =>
-          r.status === 'Checked-in'
+          r.status ===
+          'Checked-in'
       ).length,
 
     arrivals:
       rows.filter(
         (r) =>
-          r.check_in === today() &&
+          r.check_in ===
+            today() &&
           [
             'Confirmed',
             'Pending',
-          ].includes(r.status)
+          ].includes(
+            r.status
+          )
       ).length,
 
     paid:
       rows.filter(
-        (r) =>
-          isReservationPaid(r)
+        isReservationPaid
       ).length,
 
     unpaid:
       rows.filter(
         (r) =>
-          !isReservationPaid(r)
+          !isReservationPaid(
+            r
+          )
       ).length,
   };
 
@@ -598,7 +1158,8 @@ export default function Admin() {
       ? rows
       : rows.filter(
           (r) =>
-            r.status === filter
+            r.status ===
+            filter
         );
 
   /*
@@ -612,9 +1173,10 @@ export default function Admin() {
       const [
         y,
         m,
-      ] = month
-        .split('-')
-        .map(Number);
+      ] =
+        month
+          .split('-')
+          .map(Number);
 
       const days =
         new Date(
@@ -644,11 +1206,21 @@ export default function Admin() {
 
   if (loading) {
     return (
-      <div className="login-shell">
-        <div className="card">
-          Loading staff workspace…
+      <>
+        <style jsx global>{luxuryStyles}</style>
+
+        <div className="login-shell luxury-bg">
+          <div className="card luxury-loading">
+            <div className="gold-mark">
+              桜
+            </div>
+
+            <div>
+              Loading Sakura Ananda...
+            </div>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -660,91 +1232,89 @@ export default function Admin() {
 
   if (!user) {
     return (
-      <div className="login-shell">
+      <>
+        <style jsx global>{luxuryStyles}</style>
 
-        <div className="brandline">
-          桜 Sakura Ananda Resort
-        </div>
-
-        <div className="card login-card">
-
-          <div className="eyebrow">
-            Private staff area
+        <div className="login-shell luxury-bg">
+          <div className="brandline luxury-brand">
+            <span>桜</span>
+            Sakura Ananda Resort
           </div>
 
-          <h1>
-            Welcome back.
-          </h1>
-
-          <p className="muted">
-            Sign in to manage
-            reservations, rooms,
-            guest arrivals and
-            checkout.
-          </p>
-
-          <form
-            className="form"
-            onSubmit={login}
-          >
-
-            <div className="field">
-
-              <label>
-                Staff email
-              </label>
-
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) =>
-                  setEmail(
-                    e.target.value
-                  )
-                }
-                placeholder="staff@sakuraanandaresort.com"
-              />
-
+          <div className="card login-card luxury-login">
+            <div className="gold-mark">
+              桜
             </div>
 
-            <div className="field">
-
-              <label>
-                Password
-              </label>
-
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) =>
-                  setPassword(
-                    e.target.value
-                  )
-                }
-              />
-
+            <div className="eyebrow">
+              PRIVATE STAFF AREA
             </div>
 
-            {error && (
-              <div className="notice error">
-                {error}
-              </div>
-            )}
+            <h1>
+              Welcome back.
+            </h1>
 
-            <button
-              className="btn"
-              type="submit"
+            <p className="muted">
+              A refined space for managing
+              reservations, guests, rooms
+              and payments.
+            </p>
+
+            <form
+              className="form"
+              onSubmit={login}
             >
-              Sign in to dashboard
-            </button>
+              <div className="field">
+                <label>
+                  Staff email
+                </label>
 
-          </form>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) =>
+                    setEmail(
+                      e.target.value
+                    )
+                  }
+                  placeholder="staff@sakuraanandaresort.com"
+                />
+              </div>
 
+              <div className="field">
+                <label>
+                  Password
+                </label>
+
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) =>
+                    setPassword(
+                      e.target.value
+                    )
+                  }
+                />
+              </div>
+
+              {error && (
+                <div className="notice error">
+                  {error}
+                </div>
+              )}
+
+              <button
+                className="btn luxury-button"
+                type="submit"
+              >
+                Enter Staff Dashboard
+              </button>
+            </form>
+          </div>
         </div>
-
-      </div>
+      </>
     );
   }
 
@@ -755,401 +1325,210 @@ export default function Admin() {
    */
 
   return (
-    <div className="dashboard">
+    <>
+      <style jsx global>{luxuryStyles}</style>
 
-      {/* TOP */}
+      <div className="dashboard luxury-dashboard">
 
-      <div className="dash-top">
+        {/* HEADER */}
 
-        <div>
+        <div className="dash-top luxury-header">
+          <div>
+            <div className="eyebrow">
+              SAKURA ANANDA • PRIVATE RESORT
+            </div>
 
-          <div className="eyebrow">
-            Sakura Ananda • Staff
+            <h1>
+              Front Desk
+            </h1>
+
+            <div className="muted">
+              Reservations, rooms and guest
+              experiences — beautifully organized.
+            </div>
           </div>
 
-          <h1>
-            Good evening.
-          </h1>
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() =>
+              s.auth.signOut()
+            }
+          >
+            Sign out
+          </button>
+        </div>
 
-          <div className="muted">
-            A calm front desk,
-            at a glance.
+        {/* NOTICES */}
+
+        {toast && (
+          <div className="notice success luxury-notice">
+            {toast}
           </div>
-
-        </div>
-
-        <button
-          className="btn secondary"
-          onClick={() =>
-            s.auth.signOut()
-          }
-        >
-          Sign out
-        </button>
-
-      </div>
-
-      {/* NOTICES */}
-
-      {toast && (
-        <div
-          className="notice success"
-          style={{
-            marginBottom: 16,
-          }}
-        >
-          {toast}
-        </div>
-      )}
-
-      {error && (
-        <div
-          className="notice error"
-          style={{
-            marginBottom: 16,
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {/* STATS */}
-
-      <div className="stats">
-
-        <div className="card stat">
-          <span>
-            Pending requests
-          </span>
-          <b>
-            {counts.pending}
-          </b>
-        </div>
-
-        <div className="card stat">
-          <span>
-            Confirmed stays
-          </span>
-          <b>
-            {counts.confirmed}
-          </b>
-        </div>
-
-        <div className="card stat">
-          <span>
-            Occupied now
-          </span>
-          <b>
-            {counts.occupied}
-          </b>
-        </div>
-
-        <div className="card stat">
-          <span>
-            Arrivals today
-          </span>
-          <b>
-            {counts.arrivals}
-          </b>
-        </div>
-
-        <div className="card stat">
-          <span>
-            Paid
-          </span>
-          <b>
-            {counts.paid}
-          </b>
-        </div>
-
-        <div className="card stat">
-          <span>
-            Unpaid
-          </span>
-          <b>
-            {counts.unpaid}
-          </b>
-        </div>
-
-      </div>
-
-      {/* ROOMS */}
-
-      <div className="section-title">
-
-        <div>
-
-          <div className="eyebrow">
-            Rooms
-          </div>
-
-          <h2>
-            Occupancy
-          </h2>
-
-        </div>
-
-      </div>
-
-      <div className="occupancy-grid">
-
-        {rooms.map(
-          (room) => {
-
-            const active =
-              rows.find(
-                (r) =>
-                  r.room_id === room.id &&
-                  r.status ===
-                    'Checked-in'
-              );
-
-            const upcoming =
-              rows.find(
-                (r) =>
-                  r.room_id === room.id &&
-                  r.status ===
-                    'Confirmed' &&
-                  r.check_in >=
-                    today()
-              );
-
-            return (
-              <div
-                className="card room-status"
-                key={room.id}
-              >
-
-                <span
-                  className={`pill ${
-                    active
-                      ? 'danger'
-                      : 'success'
-                  }`}
-                >
-                  {active
-                    ? 'Occupied'
-                    : 'Available'}
-                </span>
-
-                <h3>
-                  {room.name}
-                </h3>
-
-                <div className="muted">
-                  ₱
-                  {Number(
-                    room.rate
-                  ).toLocaleString(
-                    'en-PH'
-                  )}
-                  {' '}
-                  / night
-                </div>
-
-                {active ? (
-                  <p
-                    style={{
-                      fontSize: 12,
-                    }}
-                  >
-                    Guest:{' '}
-                    <b>
-                      {
-                        active.guest_name
-                      }
-                    </b>
-
-                    <br />
-
-                    Until{' '}
-                    {
-                      active.check_out
-                    }
-                  </p>
-                ) : upcoming ? (
-                  <p
-                    style={{
-                      fontSize: 12,
-                    }}
-                  >
-                    Next arrival:{' '}
-                    <b>
-                      {
-                        upcoming.check_in
-                      }
-                    </b>
-
-                    <br />
-
-                    {
-                      upcoming.guest_name
-                    }
-                  </p>
-                ) : (
-                  <p
-                    style={{
-                      fontSize: 12,
-                    }}
-                  >
-                    Ready for a
-                    new stay.
-                  </p>
-                )}
-
-              </div>
-            );
-          }
         )}
 
-      </div>
+        {error && (
+          <div className="notice error luxury-notice">
+            {error}
+          </div>
+        )}
 
-      {/* CALENDAR */}
+        {/* STATS */}
 
-      <div
-        className="section-title"
-        style={{
-          marginTop: 42,
-        }}
-      >
+        <div className="stats luxury-stats">
 
-        <div>
-
-          <div className="eyebrow">
-            Planning
+          <div className="card stat luxury-stat">
+            <span>Pending</span>
+            <b>{counts.pending}</b>
+            <small>Requests</small>
           </div>
 
-          <h2>
-            Availability calendar
-          </h2>
+          <div className="card stat luxury-stat">
+            <span>Confirmed</span>
+            <b>{counts.confirmed}</b>
+            <small>Upcoming stays</small>
+          </div>
+
+          <div className="card stat luxury-stat">
+            <span>Occupied</span>
+            <b>{counts.occupied}</b>
+            <small>Rooms today</small>
+          </div>
+
+          <div className="card stat luxury-stat">
+            <span>Arrivals</span>
+            <b>{counts.arrivals}</b>
+            <small>Today</small>
+          </div>
+
+          <div className="card stat luxury-stat">
+            <span>Paid</span>
+            <b>{counts.paid}</b>
+            <small>Completed</small>
+          </div>
+
+          <div className="card stat luxury-stat">
+            <span>Unpaid</span>
+            <b>{counts.unpaid}</b>
+            <small>Outstanding</small>
+          </div>
 
         </div>
 
-        <input
-          type="month"
-          value={month}
-          onChange={(e) =>
-            setMonth(
-              e.target.value
-            )
-          }
-        />
+        {/* ROOMS */}
 
-      </div>
+        <div className="section-title luxury-section">
+          <div>
+            <div className="eyebrow">
+              ROOMS
+            </div>
 
-      <div className="card calendar-wrap">
+            <h2>
+              Occupancy
+            </h2>
+          </div>
+        </div>
 
-        <div className="calendar">
+        <div className="occupancy-grid">
 
-          {[
-            'Sun',
-            'Mon',
-            'Tue',
-            'Wed',
-            'Thu',
-            'Fri',
-            'Sat',
-          ].map(
-            (x) => (
-              <div
-                className="calendar-head"
-                key={x}
-              >
-                {x}
-              </div>
-            )
-          )}
+          {rooms.map(
+            (room) => {
 
-          {Array.from(
-            {
-              length:
-                monthDates.first +
-                monthDates.days,
-            },
-            (_, i) => {
-
-              if (
-                i <
-                monthDates.first
-              ) {
-                return (
-                  <div
-                    className="day blank"
-                    key={i}
-                  />
+              const active =
+                rows.find(
+                  (r) =>
+                    r.room_id ===
+                      room.id &&
+                    r.status ===
+                      'Checked-in'
                 );
-              }
 
-              const d =
-                i -
-                monthDates.first +
-                1;
-
-              const ds =
-                `${month}-${String(
-                  d
-                ).padStart(
-                  2,
-                  '0'
-                )}`;
+              const upcoming =
+                rows.find(
+                  (r) =>
+                    r.room_id ===
+                      room.id &&
+                    r.status ===
+                      'Confirmed' &&
+                    r.check_in >=
+                      today()
+                );
 
               return (
                 <div
-                  className="day"
-                  key={ds}
+                  className="card room-status luxury-room"
+                  key={room.id}
                 >
 
-                  <div className="day-num">
-                    {d}
+                  <div className="room-top">
+                    <span
+                      className={`pill ${
+                        active
+                          ? 'danger'
+                          : 'success'
+                      }`}
+                    >
+                      {active
+                        ? 'Occupied'
+                        : 'Available'}
+                    </span>
+
+                    <span className="room-symbol">
+                      桜
+                    </span>
                   </div>
 
-                  {rooms.map(
-                    (room) => {
+                  <h3>
+                    {room.name}
+                  </h3>
 
-                      const booked =
-                        rows.some(
-                          (r) =>
-                            r.room_id ===
-                              room.id &&
-                            [
-                              'Pending',
-                              'Confirmed',
-                              'Checked-in',
-                            ].includes(
-                              r.status
-                            ) &&
-                            r.check_in <=
-                              ds &&
-                            r.check_out >
-                              ds
-                        );
+                  <div className="room-price">
+                    ₱
+                    {Number(
+                      room.rate || 0
+                    ).toLocaleString(
+                      'en-PH'
+                    )}
+                    <small>
+                      / night
+                    </small>
+                  </div>
 
-                      return (
-                        <div
-                          className="room-dot"
-                          key={
-                            room.id
-                          }
-                        >
+                  {active ? (
+                    <p>
+                      Guest:{' '}
+                      <b>
+                        {
+                          active.guest_name
+                        }
+                      </b>
 
-                          <i
-                            className={
-                              booked
-                                ? 'booked'
-                                : ''
-                            }
-                          />
+                      <br />
 
-                          <span>
-                            {room.name.replace(
-                              'Room ',
-                              'R'
-                            )}
-                          </span>
+                      Until{' '}
+                      {
+                        active.check_out
+                      }
+                    </p>
+                  ) : upcoming ? (
+                    <p>
+                      Next arrival:{' '}
+                      <b>
+                        {
+                          upcoming.check_in
+                        }
+                      </b>
 
-                        </div>
-                      );
-                    }
+                      <br />
+
+                      {
+                        upcoming.guest_name
+                      }
+                    </p>
+                  ) : (
+                    <p>
+                      Ready for a new stay.
+                    </p>
                   )}
 
                 </div>
@@ -1159,483 +1538,705 @@ export default function Admin() {
 
         </div>
 
-      </div>
+        {/* CALENDAR */}
 
-      {/* GCASH */}
+        <div
+          className="section-title luxury-section"
+          style={{
+            marginTop: 42,
+          }}
+        >
+          <div>
+            <div className="eyebrow">
+              PLANNING
+            </div>
 
-      <div
-        className="section-title"
-        style={{
-          marginTop: 42,
-        }}
-      >
-
-        <div>
-
-          <div className="eyebrow">
-            Guest communication
+            <h2>
+              Availability calendar
+            </h2>
           </div>
 
-          <h2>
-            GCash QR
-          </h2>
-
+          <input
+            type="month"
+            value={month}
+            onChange={(e) =>
+              setMonth(
+                e.target.value
+              )
+            }
+          />
         </div>
 
-      </div>
+        <div className="card calendar-wrap luxury-card">
 
-      <div className="card">
+          <div className="calendar">
 
-        <div className="settings-card">
+            {[
+              'Sun',
+              'Mon',
+              'Tue',
+              'Wed',
+              'Thu',
+              'Fri',
+              'Sat',
+            ].map(
+              (x) => (
+                <div
+                  className="calendar-head"
+                  key={x}
+                >
+                  {x}
+                </div>
+              )
+            )}
 
-          <div>
+            {Array.from(
+              {
+                length:
+                  monthDates.first +
+                  monthDates.days,
+              },
+              (_, i) => {
 
-            <p className="muted">
-              Upload the current
-              GCash QR. Guests see
-              it on the reservation
-              page.
-            </p>
+                if (
+                  i <
+                  monthDates.first
+                ) {
+                  return (
+                    <div
+                      className="day blank"
+                      key={i}
+                    />
+                  );
+                }
 
-            <input
-              type="file"
-              accept="image/*"
-              onChange={upload}
-              disabled={
-                busy === 'qr'
+                const d =
+                  i -
+                  monthDates.first +
+                  1;
+
+                const ds =
+                  `${month}-${String(
+                    d
+                  ).padStart(
+                    2,
+                    '0'
+                  )}`;
+
+                return (
+                  <div
+                    className="day"
+                    key={ds}
+                  >
+
+                    <div className="day-num">
+                      {d}
+                    </div>
+
+                    {rooms.map(
+                      (room) => {
+
+                        const booked =
+                          rows.some(
+                            (r) =>
+                              r.room_id ===
+                                room.id &&
+                              [
+                                'Pending',
+                                'Confirmed',
+                                'Checked-in',
+                              ].includes(
+                                r.status
+                              ) &&
+                              r.check_in <=
+                                ds &&
+                              r.check_out >
+                                ds
+                          );
+
+                        return (
+                          <div
+                            className="room-dot"
+                            key={
+                              room.id
+                            }
+                          >
+                            <i
+                              className={
+                                booked
+                                  ? 'booked'
+                                  : ''
+                              }
+                            />
+
+                            <span>
+                              {room.name.replace(
+                                'Room ',
+                                'R'
+                              )}
+                            </span>
+                          </div>
+                        );
+                      }
+                    )}
+
+                  </div>
+                );
               }
-            />
-
-            {qr && (
-              <div
-                style={{
-                  marginTop: 16,
-                }}
-              >
-                <img
-                  className="qr"
-                  src={qr}
-                  alt="Current GCash QR"
-                />
-              </div>
             )}
 
           </div>
-
-          <div className="notice">
-
-            <b>
-              Email & SMS
-              notifications
-            </b>
-
-            <p>
-              Reservation emails
-              are sent automatically
-              by Google Sheets +
-              Apps Script using
-              your Google account.
-            </p>
-
-          </div>
-
         </div>
 
-      </div>
+        {/* GCASH */}
 
-      {/* RESERVATIONS */}
-
-      <div
-        className="section-title"
-        style={{
-          marginTop: 42,
-        }}
-      >
-
-        <div>
-
-          <div className="eyebrow">
-            Front desk
-          </div>
-
-          <h2>
-            Reservations
-          </h2>
-
-        </div>
-
-        <select
-          value={filter}
-          onChange={(e) =>
-            setFilter(
-              e.target.value
-            )
-          }
+        <div
+          className="section-title luxury-section"
+          style={{
+            marginTop: 42,
+          }}
         >
+          <div>
+            <div className="eyebrow">
+              GUEST COMMUNICATION
+            </div>
 
-          <option value="All">
-            All
-          </option>
+            <h2>
+              GCash QR
+            </h2>
+          </div>
+        </div>
 
-          <option value="Pending">
-            Pending
-          </option>
+        <div className="card luxury-card">
 
-          <option value="Confirmed">
-            Confirmed
-          </option>
+          <div className="settings-card">
 
-          <option value="Checked-in">
-            Checked-in
-          </option>
+            <div>
 
-          <option value="Checked-out">
-            Checked-out
-          </option>
+              <p className="muted">
+                Upload the current GCash
+                QR code shown to guests
+                during reservation.
+              </p>
 
-          <option value="Cancelled">
-            Cancelled
-          </option>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={upload}
+                disabled={
+                  busy === 'qr'
+                }
+              />
 
-        </select>
-
-      </div>
-
-      {/* TABLE */}
-
-      <div className="table-wrap">
-
-        <table className="table">
-
-          <thead>
-
-            <tr>
-
-              <th>
-                Booking
-              </th>
-
-              <th>
-                Guest
-              </th>
-
-              <th>
-                Stay
-              </th>
-
-              <th>
-                Room
-              </th>
-
-              <th>
-                Payment
-              </th>
-
-              <th>
-                Status
-              </th>
-
-              <th>
-                Actions
-              </th>
-
-            </tr>
-
-          </thead>
-
-          <tbody>
-
-            {filtered.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={7}
+              {qr && (
+                <div
                   style={{
-                    textAlign: 'center',
-                    padding: 40,
+                    marginTop: 16,
                   }}
                 >
-                  <span className="muted">
-                    No reservations found.
-                  </span>
-                </td>
+                  <img
+                    className="qr luxury-qr"
+                    src={qr}
+                    alt="Current GCash QR"
+                  />
+                </div>
+              )}
+
+            </div>
+
+            <div className="notice">
+              <b>
+                Email & SMS notifications
+              </b>
+
+              <p>
+                Reservation notifications
+                are handled automatically
+                by your Google Sheets +
+                Apps Script workflow.
+              </p>
+            </div>
+
+          </div>
+        </div>
+
+        {/* RESERVATIONS */}
+
+        <div
+          className="section-title luxury-section"
+          style={{
+            marginTop: 42,
+          }}
+        >
+
+          <div>
+            <div className="eyebrow">
+              FRONT DESK
+            </div>
+
+            <h2>
+              Reservations
+            </h2>
+
+            <p className="muted">
+              Edit, update, manage payments
+              or remove reservations.
+            </p>
+          </div>
+
+          <select
+            value={filter}
+            onChange={(e) =>
+              setFilter(
+                e.target.value
+              )
+            }
+          >
+            <option value="All">
+              All reservations
+            </option>
+
+            <option value="Pending">
+              Pending
+            </option>
+
+            <option value="Confirmed">
+              Confirmed
+            </option>
+
+            <option value="Checked-in">
+              Checked-in
+            </option>
+
+            <option value="Checked-out">
+              Checked-out
+            </option>
+
+            <option value="Cancelled">
+              Cancelled
+            </option>
+          </select>
+
+        </div>
+
+        {/* TABLE */}
+
+        <div className="table-wrap luxury-table-wrap">
+
+          <table className="table luxury-table">
+
+            <thead>
+              <tr>
+                <th>Booking</th>
+                <th>Guest</th>
+                <th>Stay</th>
+                <th>Room</th>
+                <th>Payment</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
-            ) : (
-              filtered.map(
-                (r) => {
+            </thead>
 
-                  const isPaid =
-                    isReservationPaid(
-                      r
-                    );
+            <tbody>
 
-                  const paymentBusy =
-                    busy ===
-                    `payment-${r.id}`;
+              {filtered.length ===
+              0 ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    style={{
+                      textAlign:
+                        'center',
+                      padding: 50,
+                    }}
+                  >
+                    <span className="muted">
+                      No reservations found.
+                    </span>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map(
+                  (r) => {
 
-                  const status =
-                    paymentStatus(
-                      r
-                    );
+                    const isPaid =
+                      isReservationPaid(
+                        r
+                      );
 
-                  return (
-                    <tr
-                      key={r.id}
-                    >
+                    const paymentBusy =
+                      busy ===
+                      `payment-${r.id}`;
 
-                      {/* BOOKING */}
+                    const deleteBusy =
+                      busy ===
+                      `delete-${r.id}`;
 
-                      <td>
+                    const status =
+                      paymentStatus(
+                        r
+                      );
 
-                        <b>
+                    return (
+                      <tr
+                        key={r.id}
+                      >
+
+                        {/* BOOKING */}
+
+                        <td>
+                          <b>
+                            {
+                              r.booking_id
+                            }
+                          </b>
+
+                          <br />
+
+                          <span className="muted">
+                            {new Date(
+                              r.created_at
+                            ).toLocaleDateString(
+                              'en-PH'
+                            )}
+                          </span>
+                        </td>
+
+                        {/* GUEST */}
+
+                        <td>
+                          <b>
+                            {
+                              r.guest_name
+                            }
+                          </b>
+
+                          <br />
+
+                          <span className="muted">
+                            {r.mobile}
+                          </span>
+
+                          <br />
+
+                          <span className="muted">
+                            {r.email ||
+                              'No email'}
+                          </span>
+                        </td>
+
+                        {/* STAY */}
+
+                        <td>
                           {
-                            r.booking_id
+                            r.check_in
                           }
-                        </b>
 
-                        <br />
+                          <br />
 
-                        <span className="muted">
-                          {new Date(
-                            r.created_at
-                          ).toLocaleDateString(
-                            'en-PH'
-                          )}
-                        </span>
+                          →
 
-                      </td>
+                          {' '}
 
-                      {/* GUEST */}
-
-                      <td>
-
-                        <b>
                           {
-                            r.guest_name
+                            r.check_out
                           }
-                        </b>
 
-                        <br />
+                          <br />
 
-                        <span className="muted">
-                          {r.mobile}
-                        </span>
+                          <span className="muted">
+                            {r.guests}{' '}
+                            guest
+                            {Number(
+                              r.guests
+                            ) !== 1
+                              ? 's'
+                              : ''}
+                          </span>
+                        </td>
 
-                        <br />
+                        {/* ROOM */}
 
-                        <span className="muted">
-                          {r.email ||
-                            'No email'}
-                        </span>
+                        <td>
 
-                      </td>
+                          {/*
+                           * IMPORTANT:
+                           *
+                           * NEVER display r.room_id
+                           * here.
+                           *
+                           * Display the related
+                           * room name.
+                           */}
 
-                      {/* STAY */}
+                          <b className="room-name-display">
+                            {r.room?.name ||
+                              rooms.find(
+                                (room) =>
+                                  room.id ===
+                                  r.room_id
+                              )?.name ||
+                              'Room unavailable'}
+                          </b>
 
-                      <td>
+                          <br />
 
-                        {
-                          r.check_in
-                        }
+                          <span className="muted">
+                            ₱
+                            {Number(
+                              r.rate_per_night ||
+                                0
+                            ).toLocaleString(
+                              'en-PH'
+                            )}
+                            /night
+                          </span>
 
-                        <br />
+                        </td>
 
-                        →
+                        {/* PAYMENT */}
 
-                        {' '}
+                        <td>
 
-                        {
-                          r.check_out
-                        }
+                          <b>
+                            ₱
+                            {Number(
+                              r.room_total ||
+                                0
+                            ).toLocaleString(
+                              'en-PH'
+                            )}
+                          </b>
 
-                        <br />
+                          <br />
 
-                        <span className="muted">
-                          {r.guests}{' '}
-                          guest
+                          Deposit ₱
                           {Number(
-                            r.guests
-                          ) !== 1
-                            ? 's'
-                            : ''}
-                        </span>
-
-                      </td>
-
-                      {/* ROOM */}
-
-                      <td>
-
-                        <b>
-                          {r.room?.name ||
-                            'Room unavailable'}
-                        </b>
-
-                        <br />
-
-                        <span className="muted">
-                          ₱
-                          {Number(
-                            r.rate_per_night || 0
+                            r.deposit ||
+                              0
                           ).toLocaleString(
                             'en-PH'
                           )}
-                          /night
-                        </span>
 
-                      </td>
+                          <br />
 
-                      {/* PAYMENT */}
-
-                      <td>
-
-                        <b>
-                          ₱
+                          Balance ₱
                           {Number(
-                            r.room_total || 0
+                            r.balance ||
+                              0
                           ).toLocaleString(
                             'en-PH'
                           )}
-                        </b>
 
-                        <br />
+                          <br />
 
-                        Deposit ₱
-                        {Number(
-                          r.deposit || 0
-                        ).toLocaleString(
-                          'en-PH'
-                        )}
+                          <span
+                            className={`pill ${
+                              isPaid
+                                ? 'success'
+                                : Number(
+                                    r.deposit ||
+                                      0
+                                  ) > 0
+                                ? 'warn'
+                                : 'danger'
+                            }`}
+                            style={{
+                              marginTop: 6,
+                              display:
+                                'inline-block',
+                            }}
+                          >
+                            {status}
+                          </span>
 
-                        <br />
+                          <br />
 
-                        Balance ₱
-                        {Number(
-                          r.balance || 0
-                        ).toLocaleString(
-                          'en-PH'
-                        )}
+                          <span className="muted">
+                            {r.payment_method ||
+                              'Not specified'}
+                          </span>
 
-                        <br />
+                          <div
+                            style={{
+                              marginTop: 8,
+                            }}
+                          >
 
-                        <span
-                          className={`pill ${
-                            isPaid
-                              ? 'success'
-                              : Number(
-                                  r.deposit ||
-                                    0
-                                ) > 0
-                              ? 'warn'
-                              : 'danger'
-                          }`}
-                          style={{
-                            marginTop: 6,
-                            display:
-                              'inline-block',
-                          }}
-                        >
-                          {status}
-                        </span>
+                            {isPaid ? (
+                              <div>
 
-                        <br />
+                                <span className="pill success">
+                                  ✓ PAID
+                                </span>
 
-                        <span className="muted">
-                          {r.payment_method ||
-                            'Not specified'}
-                        </span>
+                                <button
+                                  type="button"
+                                  className="btn secondary"
+                                  style={{
+                                    marginTop: 7,
+                                    fontSize: 11,
+                                    padding:
+                                      '5px 8px',
+                                  }}
+                                  disabled={
+                                    paymentBusy
+                                  }
+                                  onClick={() =>
+                                    markPaymentUnpaid(
+                                      r.id
+                                    )
+                                  }
+                                >
+                                  {paymentBusy
+                                    ? 'Updating...'
+                                    : 'Undo Paid'}
+                                </button>
 
-                        <div
-                          style={{
-                            marginTop: 8,
-                          }}
-                        >
-
-                          {isPaid ? (
-
-                            <div>
-
-                              <span
-                                className="pill success"
-                              >
-                                ✓ PAID
-                              </span>
-
+                              </div>
+                            ) : (
                               <button
                                 type="button"
-                                className="btn secondary"
-                                style={{
-                                  marginTop: 7,
-                                  fontSize: 11,
-                                  padding:
-                                    '5px 8px',
-                                }}
+                                className="btn green"
                                 disabled={
                                   paymentBusy
                                 }
                                 onClick={() =>
-                                  markPaymentUnpaid(
+                                  markPaymentPaid(
                                     r.id
                                   )
                                 }
                               >
                                 {paymentBusy
                                   ? 'Updating...'
-                                  : 'Undo Paid'}
+                                  : 'Mark as Paid'}
                               </button>
+                            )}
 
-                            </div>
+                          </div>
 
-                          ) : (
+                        </td>
+
+                        {/* STATUS */}
+
+                        <td>
+                          <span
+                            className={`pill ${statusClass(
+                              r.status
+                            )}`}
+                          >
+                            {r.status}
+                          </span>
+                        </td>
+
+                        {/* ACTIONS */}
+
+                        <td>
+
+                          <div className="actions luxury-actions">
+
+                            {/* EDIT */}
 
                             <button
                               type="button"
-                              className="btn green"
-                              disabled={
-                                paymentBusy
-                              }
+                              className="btn edit-btn"
                               onClick={() =>
-                                markPaymentPaid(
-                                  r.id
+                                openEdit(
+                                  r
                                 )
                               }
                             >
-                              {paymentBusy
-                                ? 'Updating...'
-                                : 'Mark as Paid'}
+                              Edit
                             </button>
 
-                          )}
+                            {/* STATUS */}
 
-                        </div>
+                            {r.status ===
+                              'Pending' && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn green"
+                                  disabled={
+                                    busy ===
+                                    r.id
+                                  }
+                                  onClick={() =>
+                                    action(
+                                      r.id,
+                                      'Confirmed'
+                                    )
+                                  }
+                                >
+                                  {busy ===
+                                  r.id
+                                    ? 'Updating...'
+                                    : 'Confirm'}
+                                </button>
 
-                      </td>
+                                <button
+                                  type="button"
+                                  className="btn red"
+                                  disabled={
+                                    busy ===
+                                    r.id
+                                  }
+                                  onClick={() =>
+                                    action(
+                                      r.id,
+                                      'Cancelled'
+                                    )
+                                  }
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            )}
 
-                      {/* STATUS */}
+                            {r.status ===
+                              'Confirmed' && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn blue"
+                                  disabled={
+                                    busy ===
+                                    r.id
+                                  }
+                                  onClick={() =>
+                                    action(
+                                      r.id,
+                                      'Checked-in'
+                                    )
+                                  }
+                                >
+                                  Check-in
+                                </button>
 
-                      <td>
+                                <button
+                                  type="button"
+                                  className="btn red"
+                                  disabled={
+                                    busy ===
+                                    r.id
+                                  }
+                                  onClick={() =>
+                                    action(
+                                      r.id,
+                                      'Cancelled'
+                                    )
+                                  }
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            )}
 
-                        <span
-                          className={`pill ${statusClass(
-                            r.status
-                          )}`}
-                        >
-                          {r.status}
-                        </span>
-
-                      </td>
-
-                      {/* ACTIONS */}
-
-                      <td>
-
-                        <div className="actions">
-
-                          {r.status ===
-                            'Pending' && (
-                            <>
+                            {r.status ===
+                              'Checked-in' && (
                               <button
                                 type="button"
-                                className="btn green"
+                                className="btn secondary"
                                 disabled={
                                   busy ===
                                   r.id
@@ -1643,90 +2244,1101 @@ export default function Admin() {
                                 onClick={() =>
                                   action(
                                     r.id,
-                                    'Confirmed'
+                                    'Checked-out'
                                   )
                                 }
                               >
-                                {busy === r.id
-                                  ? 'Updating...'
-                                  : 'Confirm'}
+                                Checkout
                               </button>
+                            )}
 
-                              <button
-                                type="button"
-                                className="btn red"
-                                disabled={
-                                  busy ===
-                                  r.id
-                                }
-                                onClick={() =>
-                                  action(
-                                    r.id,
-                                    'Cancelled'
-                                  )
-                                }
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          )}
+                            {/* DELETE */}
 
-                          {r.status ===
-                            'Confirmed' && (
                             <button
                               type="button"
-                              className="btn red"
+                              className="btn delete-btn"
                               disabled={
-                                busy ===
-                                r.id
+                                deleteBusy
                               }
                               onClick={() =>
-                                action(
-                                  r.id,
-                                  'Cancelled'
+                                deleteReservation(
+                                  r
                                 )
                               }
                             >
-                              Cancel
+                              {deleteBusy
+                                ? 'Deleting...'
+                                : 'Delete'}
                             </button>
-                          )}
 
-                          {r.status ===
-                            'Checked-in' && (
-                            <button
-                              type="button"
-                              className="btn secondary"
-                              disabled={
-                                busy ===
-                                r.id
-                              }
-                              onClick={() =>
-                                action(
-                                  r.id,
-                                  'Checked-out'
-                                )
-                              }
-                            >
-                              Checkout
-                            </button>
-                          )}
+                          </div>
 
-                        </div>
+                        </td>
 
-                      </td>
+                      </tr>
+                    );
+                  }
+                )
+              )}
 
-                    </tr>
-                  );
-                }
-              )
-            )}
+            </tbody>
 
-          </tbody>
+          </table>
 
-        </table>
+        </div>
 
       </div>
 
-    </div>
+      {/* =====================================================
+          EDIT MODAL
+          ===================================================== */}
+
+      {editingReservation && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(e) => {
+            if (
+              e.target ===
+              e.currentTarget
+            ) {
+              closeEdit();
+            }
+          }}
+        >
+
+          <div className="edit-modal">
+
+            <div className="modal-header">
+
+              <div>
+
+                <div className="eyebrow">
+                  RESERVATION EDITOR
+                </div>
+
+                <h2>
+                  Edit Reservation
+                </h2>
+
+                <p className="muted">
+                  Booking #
+                  {
+                    editingReservation.booking_id
+                  }
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                className="modal-close"
+                onClick={
+                  closeEdit
+                }
+              >
+                ×
+              </button>
+
+            </div>
+
+            <form
+              className="edit-form"
+              onSubmit={
+                updateReservation
+              }
+            >
+
+              {/* GUEST */}
+
+              <div className="form-section-title">
+                Guest Information
+              </div>
+
+              <div className="edit-grid">
+
+                <div className="field">
+                  <label>
+                    Guest name
+                  </label>
+
+                  <input
+                    required
+                    value={
+                      editForm.guest_name
+                    }
+                    onChange={(e) =>
+                      updateEditField(
+                        'guest_name',
+                        e.target.value
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="field">
+                  <label>
+                    Mobile number
+                  </label>
+
+                  <input
+                    required
+                    type="text"
+                    value={
+                      editForm.mobile
+                    }
+                    onChange={(e) =>
+                      updateEditField(
+                        'mobile',
+                        e.target.value
+                      )
+                    }
+                    placeholder="+63..."
+                  />
+                </div>
+
+                <div className="field">
+                  <label>
+                    Email
+                  </label>
+
+                  <input
+                    type="email"
+                    value={
+                      editForm.email
+                    }
+                    onChange={(e) =>
+                      updateEditField(
+                        'email',
+                        e.target.value
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="field">
+                  <label>
+                    Number of guests
+                  </label>
+
+                  <input
+                    type="number"
+                    min="1"
+                    value={
+                      editForm.guests
+                    }
+                    onChange={(e) =>
+                      updateEditField(
+                        'guests',
+                        Number(
+                          e.target.value
+                        )
+                      )
+                    }
+                  />
+                </div>
+
+              </div>
+
+              {/* STAY */}
+
+              <div className="form-section-title">
+                Stay Details
+              </div>
+
+              <div className="edit-grid">
+
+                <div className="field">
+                  <label>
+                    Check-in
+                  </label>
+
+                  <input
+                    type="date"
+                    required
+                    value={
+                      editForm.check_in
+                    }
+                    onChange={(e) =>
+                      updateEditField(
+                        'check_in',
+                        e.target.value
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="field">
+                  <label>
+                    Check-out
+                  </label>
+
+                  <input
+                    type="date"
+                    required
+                    value={
+                      editForm.check_out
+                    }
+                    onChange={(e) =>
+                      updateEditField(
+                        'check_out',
+                        e.target.value
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="field">
+                  <label>
+                    Room
+                  </label>
+
+                  <select
+                    required
+                    value={
+                      editForm.room_id
+                    }
+                    onChange={(e) =>
+                      handleRoomChange(
+                        e.target.value
+                      )
+                    }
+                  >
+                    <option value="">
+                      Select a room
+                    </option>
+
+                    {rooms.map(
+                      (room) => (
+                        <option
+                          key={
+                            room.id
+                          }
+                          value={
+                            room.id
+                          }
+                        >
+                          {room.name} — ₱
+                          {Number(
+                            room.rate ||
+                              0
+                          ).toLocaleString(
+                            'en-PH'
+                          )}
+                          /night
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label>
+                    Rate per night
+                  </label>
+
+                  <input
+                    type="number"
+                    min="0"
+                    value={
+                      editForm.rate_per_night
+                    }
+                    onChange={(e) =>
+                      updateEditField(
+                        'rate_per_night',
+                        Number(
+                          e.target.value
+                        )
+                      )
+                    }
+                  />
+                </div>
+
+              </div>
+
+              {/* PAYMENT */}
+
+              <div className="form-section-title">
+                Payment
+              </div>
+
+              <div className="edit-grid">
+
+                <div className="field">
+                  <label>
+                    Room total
+                  </label>
+
+                  <input
+                    type="number"
+                    value={calculateEditTotal()}
+                    readOnly
+                  />
+                </div>
+
+                <div className="field">
+                  <label>
+                    Deposit
+                  </label>
+
+                  <input
+                    type="number"
+                    min="0"
+                    value={
+                      editForm.deposit
+                    }
+                    onChange={(e) =>
+                      updateEditField(
+                        'deposit',
+                        Number(
+                          e.target.value
+                        )
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="field">
+                  <label>
+                    Balance
+                  </label>
+
+                  <input
+                    type="number"
+                    value={Math.max(
+                      0,
+                      calculateEditTotal() -
+                        Number(
+                          editForm.deposit ||
+                            0
+                        )
+                    )}
+                    readOnly
+                  />
+                </div>
+
+                <div className="field">
+                  <label>
+                    Payment method
+                  </label>
+
+                  <select
+                    value={
+                      editForm.payment_method
+                    }
+                    onChange={(e) =>
+                      updateEditField(
+                        'payment_method',
+                        e.target.value
+                      )
+                    }
+                  >
+                    <option value="GCash">
+                      GCash
+                    </option>
+
+                    <option value="Cash">
+                      Cash
+                    </option>
+
+                    <option value="Bank Transfer">
+                      Bank Transfer
+                    </option>
+
+                    <option value="Card">
+                      Card
+                    </option>
+
+                    <option value="Other">
+                      Other
+                    </option>
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label>
+                    Payment reference
+                  </label>
+
+                  <input
+                    value={
+                      editForm.payment_ref
+                    }
+                    onChange={(e) =>
+                      updateEditField(
+                        'payment_ref',
+                        e.target.value
+                      )
+                    }
+                  />
+                </div>
+
+              </div>
+
+              {/* STATUS */}
+
+              <div className="form-section-title">
+                Reservation Status
+              </div>
+
+              <div className="edit-grid">
+
+                <div className="field">
+                  <label>
+                    Status
+                  </label>
+
+                  <select
+                    value={
+                      editForm.status
+                    }
+                    onChange={(e) =>
+                      updateEditField(
+                        'status',
+                        e.target.value
+                      )
+                    }
+                  >
+                    <option value="Pending">
+                      Pending
+                    </option>
+
+                    <option value="Confirmed">
+                      Confirmed
+                    </option>
+
+                    <option value="Checked-in">
+                      Checked-in
+                    </option>
+
+                    <option value="Checked-out">
+                      Checked-out
+                    </option>
+
+                    <option value="Cancelled">
+                      Cancelled
+                    </option>
+                  </select>
+                </div>
+
+              </div>
+
+              {/* SPECIAL REQUESTS */}
+
+              <div className="field">
+                <label>
+                  Special requests
+                </label>
+
+                <textarea
+                  rows={4}
+                  value={
+                    editForm.special_requests
+                  }
+                  onChange={(e) =>
+                    updateEditField(
+                      'special_requests',
+                      e.target.value
+                    )
+                  }
+                  placeholder="Guest requests, notes, special arrangements..."
+                />
+              </div>
+
+              {/* TOTAL PREVIEW */}
+
+              <div className="edit-summary">
+
+                <div>
+                  <span>
+                    Room
+                  </span>
+
+                  <b>
+                    {rooms.find(
+                      (room) =>
+                        room.id ===
+                        editForm.room_id
+                    )?.name ||
+                      'Not selected'}
+                  </b>
+                </div>
+
+                <div>
+                  <span>
+                    Total
+                  </span>
+
+                  <b>
+                    ₱
+                    {calculateEditTotal().toLocaleString(
+                      'en-PH'
+                    )}
+                  </b>
+                </div>
+
+                <div>
+                  <span>
+                    Deposit
+                  </span>
+
+                  <b>
+                    ₱
+                    {Number(
+                      editForm.deposit ||
+                        0
+                    ).toLocaleString(
+                      'en-PH'
+                    )}
+                  </b>
+                </div>
+
+                <div>
+                  <span>
+                    Balance
+                  </span>
+
+                  <b>
+                    ₱
+                    {Math.max(
+                      0,
+                      calculateEditTotal() -
+                        Number(
+                          editForm.deposit ||
+                            0
+                        )
+                    ).toLocaleString(
+                      'en-PH'
+                    )}
+                  </b>
+                </div>
+
+              </div>
+
+              {/* BUTTONS */}
+
+              <div className="modal-actions">
+
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={
+                    busy === 'edit'
+                  }
+                  onClick={
+                    closeEdit
+                  }
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="btn luxury-button"
+                  disabled={
+                    busy === 'edit'
+                  }
+                >
+                  {busy === 'edit'
+                    ? 'Saving changes...'
+                    : 'Save Changes'}
+                </button>
+
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+    </>
   );
 }
+
+/*
+ * ============================================================
+ * LUXURY STYLES
+ * ============================================================
+ */
+
+const luxuryStyles = `
+:root {
+  --luxury-bg: #f6f1e8;
+  --luxury-card: #fffdf8;
+  --luxury-dark: #211f1a;
+  --luxury-muted: #827c70;
+  --luxury-gold: #b18a45;
+  --luxury-gold-light: #d8bd83;
+  --luxury-border: rgba(120, 98, 60, .16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(190, 160, 100, .10),
+      transparent 32%
+    ),
+    linear-gradient(
+      135deg,
+      #faf7f0,
+      #f2ecdf
+    );
+  color: var(--luxury-dark);
+}
+
+.luxury-dashboard {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 38px 28px 80px;
+}
+
+.luxury-header {
+  padding: 22px 0 34px;
+  border-bottom: 1px solid var(--luxury-border);
+  margin-bottom: 24px;
+}
+
+.luxury-header h1 {
+  font-family: Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -.04em;
+  font-size: clamp(36px, 5vw, 58px);
+  margin: 8px 0;
+}
+
+.luxury-brand {
+  font-family: Georgia, serif;
+  letter-spacing: .06em;
+}
+
+.luxury-brand span,
+.gold-mark {
+  color: var(--luxury-gold);
+}
+
+.gold-mark {
+  font-family: Georgia, serif;
+  font-size: 42px;
+  margin-bottom: 8px;
+}
+
+.luxury-card,
+.luxury-stat,
+.luxury-room {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255,255,255,.96),
+      rgba(249,244,234,.94)
+    );
+  border: 1px solid var(--luxury-border);
+  box-shadow:
+    0 16px 50px rgba(70,55,30,.07),
+    inset 0 1px 0 rgba(255,255,255,.8);
+}
+
+.luxury-stat {
+  position: relative;
+  overflow: hidden;
+  padding: 22px;
+}
+
+.luxury-stat::after {
+  content: "桜";
+  position: absolute;
+  right: 15px;
+  bottom: -12px;
+  font-family: Georgia, serif;
+  font-size: 60px;
+  color: rgba(177,138,69,.08);
+}
+
+.luxury-stat span {
+  color: var(--luxury-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+.luxury-stat b {
+  display: block;
+  font-family: Georgia, serif;
+  font-size: 34px;
+  font-weight: 500;
+  margin: 8px 0 3px;
+}
+
+.luxury-stat small {
+  color: var(--luxury-muted);
+}
+
+.luxury-section {
+  align-items: flex-end;
+}
+
+.luxury-section h2 {
+  font-family: Georgia, serif;
+  font-weight: 500;
+  font-size: 30px;
+  margin: 5px 0;
+}
+
+.luxury-room {
+  padding: 22px;
+  transition:
+    transform .2s ease,
+    box-shadow .2s ease;
+}
+
+.luxury-room:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 20px 55px rgba(70,55,30,.11);
+}
+
+.room-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.room-symbol {
+  color: var(--luxury-gold);
+  font-family: Georgia, serif;
+  font-size: 22px;
+}
+
+.luxury-room h3 {
+  font-family: Georgia, serif;
+  font-size: 24px;
+  font-weight: 500;
+  margin: 18px 0 5px;
+}
+
+.room-price {
+  font-family: Georgia, serif;
+  font-size: 20px;
+  color: var(--luxury-gold);
+}
+
+.room-price small {
+  color: var(--luxury-muted);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.room-name-display {
+  color: #5b4423;
+}
+
+.luxury-table-wrap {
+  border-radius: 18px;
+  box-shadow:
+    0 20px 70px rgba(60,45,20,.08);
+}
+
+.luxury-table th {
+  background: #eee6d5;
+  color: #6d5a3c;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: 10px;
+}
+
+.luxury-table tbody tr {
+  transition: background .15s ease;
+}
+
+.luxury-table tbody tr:hover {
+  background: rgba(177,138,69,.055);
+}
+
+.luxury-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 150px;
+}
+
+.edit-btn {
+  background: #8b6a38 !important;
+  color: white !important;
+}
+
+.delete-btn {
+  background: transparent !important;
+  color: #a13b32 !important;
+  border: 1px solid rgba(161,59,50,.25) !important;
+}
+
+.delete-btn:hover {
+  background: #a13b32 !important;
+  color: white !important;
+}
+
+.btn.blue {
+  background: #536d80;
+  color: white;
+}
+
+.luxury-button {
+  background:
+    linear-gradient(
+      135deg,
+      #8e6b34,
+      #c19b58
+    ) !important;
+  color: white !important;
+  border: 0 !important;
+  box-shadow:
+    0 8px 25px rgba(142,107,52,.25);
+}
+
+.luxury-button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.luxury-notice {
+  border-left: 3px solid var(--luxury-gold);
+}
+
+.luxury-qr {
+  max-width: 240px;
+  border-radius: 16px;
+  border: 1px solid var(--luxury-border);
+  box-shadow:
+    0 12px 35px rgba(50,40,20,.1);
+}
+
+/* LOGIN */
+
+.luxury-bg {
+  min-height: 100vh;
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(185,145,70,.16),
+      transparent 35%
+    ),
+    #f4eee2;
+}
+
+.luxury-login {
+  border:
+    1px solid
+    rgba(177,138,69,.22);
+  box-shadow:
+    0 30px 100px rgba(55,40,20,.13);
+}
+
+/* EDIT MODAL */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(26,23,18,.66);
+  backdrop-filter: blur(9px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.edit-modal {
+  width: min(900px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background:
+    linear-gradient(
+      145deg,
+      #fffdf9,
+      #f5eee2
+    );
+  border:
+    1px solid
+    rgba(177,138,69,.25);
+  border-radius: 22px;
+  box-shadow:
+    0 35px 120px rgba(0,0,0,.28);
+}
+
+.modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 28px 30px 20px;
+  background: rgba(255,253,249,.94);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--luxury-border);
+}
+
+.modal-header h2 {
+  font-family: Georgia, serif;
+  font-size: 30px;
+  font-weight: 500;
+  margin: 5px 0;
+}
+
+.modal-close {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--luxury-border);
+  background: white;
+  font-size: 25px;
+  cursor: pointer;
+  color: #6d604e;
+}
+
+.edit-form {
+  padding: 28px 30px 32px;
+}
+
+.form-section-title {
+  font-family: Georgia, serif;
+  color: #7d5d2f;
+  font-size: 17px;
+  margin: 24px 0 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--luxury-border);
+}
+
+.edit-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.edit-form input,
+.edit-form select,
+.edit-form textarea {
+  width: 100%;
+  border:
+    1px solid
+    rgba(100,80,45,.18);
+  background: rgba(255,255,255,.78);
+  border-radius: 10px;
+  padding: 12px 13px;
+  color: #2b281f;
+  outline: none;
+  transition:
+    border-color .15s ease,
+    box-shadow .15s ease;
+}
+
+.edit-form input:focus,
+.edit-form select:focus,
+.edit-form textarea:focus {
+  border-color:
+    rgba(177,138,69,.65);
+  box-shadow:
+    0 0 0 3px
+    rgba(177,138,69,.10);
+}
+
+.edit-form textarea {
+  resize: vertical;
+}
+
+.edit-summary {
+  display: grid;
+  grid-template-columns:
+    repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 24px;
+  padding: 18px;
+  border-radius: 14px;
+  background:
+    rgba(177,138,69,.08);
+  border:
+    1px solid
+    rgba(177,138,69,.16);
+}
+
+.edit-summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.edit-summary span {
+  color: var(--luxury-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.edit-summary b {
+  font-family: Georgia, serif;
+  font-size: 17px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--luxury-border);
+}
+
+@media (max-width: 900px) {
+  .luxury-dashboard {
+    padding: 24px 14px 60px;
+  }
+
+  .edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .edit-summary {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+  }
+
+  .luxury-table {
+    min-width: 1050px;
+  }
+}
+
+@media (max-width: 600px) {
+  .stats {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+  .edit-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-backdrop {
+    padding: 10px;
+  }
+
+  .edit-modal {
+    max-height: calc(100vh - 20px);
+    border-radius: 16px;
+  }
+
+  .modal-header,
+  .edit-form {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+}
+`;

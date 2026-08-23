@@ -25,7 +25,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <Link href="/amenities">Experience</Link>
               <Link href="/coffee-bar">Coffee & Bar</Link>
               <Link href="/checkin">Check-in</Link>
-              <Link href="/reservation" className="sa-nav-cta">Reserve</Link>
+			  <Link href="/reservation">Reservation</Link>
+              <Link href="/admin" className="sa-nav-cta">Staff Portal</Link>
             </nav>
           </div>
         </header>

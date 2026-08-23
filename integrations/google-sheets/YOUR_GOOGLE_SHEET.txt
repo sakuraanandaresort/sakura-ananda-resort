@@ -1,9 +1,0 @@
-Sakura Ananda Resort Google Sheet
-==================================
-URL:
-https://docs.google.com/spreadsheets/d/1iNpswyOS1PjU0nSPCoIVxvKKHNjBwHsvxncmtHi91TU/edit
-
-Spreadsheet ID:
-1iNpswyOS1PjU0nSPCoIVxvKKHNjBwHsvxncmtHi91TU
-
-The Apps Script in Code.gs is already configured to open this exact spreadsheet.
